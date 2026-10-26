@@ -99,14 +99,15 @@ voice-ops:
 	uv run --package salesbot-api python -m salesbot_api.tools.voice_ops $(ARGS)
 
 # First voice test (docs/SARVAM_AGENT.md, browser test). The tunnel refuses DEMO_MODE=true.
+# FIELDS=1 (voice-tunnel, voice-api-restart): also log non-personal request fields, temporarily.
 voice-tunnel:
-	uv run --package salesbot-api python -m salesbot_api.tools.voice_tunnel start
+	$(if $(FIELDS),VOICE_CALL_LOG_FIELDS=true) uv run --package salesbot-api python -m salesbot_api.tools.voice_tunnel start
 
 voice-tunnel-stop:
 	uv run --package salesbot-api python -m salesbot_api.tools.voice_tunnel stop
 
 voice-api-restart:
-	uv run --package salesbot-api python -m salesbot_api.tools.voice_tunnel restart-api
+	$(if $(FIELDS),VOICE_CALL_LOG_FIELDS=true) uv run --package salesbot-api python -m salesbot_api.tools.voice_tunnel restart-api
 
 voice-tunnel-check:
 	uv run --package salesbot-api python -m salesbot_api.tools.voice_tunnel check

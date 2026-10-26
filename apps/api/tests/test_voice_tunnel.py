@@ -9,6 +9,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from salesbot_api.api_v1 import get_conn
 from salesbot_api.demo import seed
 from salesbot_api.settings import Settings, get_settings
 from salesbot_api.tools import voice_ops, voice_tunnel
@@ -209,3 +210,51 @@ def test_paste_text_covers_every_tool_and_hook_without_the_secret():
     assert text.count("Bearer token") == len(VOICE_TOOLS) + 2
     assert "webhooks/" not in text  # the webhook token never goes in this file
     assert TOOL not in text and HOOK not in text
+
+
+# -- temporary field logging ------------------------------------------------------------------
+
+
+def test_field_part_logs_only_allowlisted_non_personal_fields():
+    body = (
+        b'{"date": "2026-10-27", "part_of_day": "morning", "next_available": false, '
+        b'"starts_at": "2026-10-27T10:00:00+05:30", "reason": "question", "urgency": "normal", '
+        b'"caller_phone": "+919812345678", "patient_name": "Asha", "summary": "chest pain", '
+        b'"transcript": "hello", "patient_id": "7e570000-0000-4000-8000-000000000001"}'
+    )
+    part = calllog.field_part(body)
+    assert part == (
+        " date=2026-10-27 part_of_day=morning next_available=false "
+        "starts_at=2026-10-27T10:00:00+05:30 reason=question urgency=normal"
+    )
+    for secret in ("9812345678", "Asha", "chest", "hello", "7e570000"):
+        assert secret not in part
+
+
+def test_field_part_blocks_free_text_and_bad_json():
+    assert calllog.field_part(b'{"reason": "my mother is ill"}') == " reason=<other>"
+    assert calllog.field_part(b"not json") == " body=<not json>"
+    assert calllog.field_part(b"[1, 2]") == ""
+
+
+def test_field_logging_keeps_the_body_for_the_endpoint(tmp_path):
+    log = tmp_path / "voice-tools.log"
+    app = FastAPI()
+    app.include_router(voice_tools.router)
+    calllog.install(app, str(log), with_fields=True)
+    settings = ready()
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_conn] = lambda: None  # no database needed for a 422
+    body = {"interaction_id": "i-1", "date": "2026-10-27", "caller_phone": "+919812345678"}
+    with TestClient(app) as c:
+        r = c.post(
+            "/api/v1/voice/tools/get_availability",
+            json=body,
+            headers={"Authorization": f"Bearer {TOOL}"},
+        )
+    # The endpoint still read the body: only the missing field is reported.
+    missing = [".".join(map(str, e["loc"])) for e in r.json()["detail"]]
+    assert r.status_code == 422 and missing == ["body.clinic"]
+    text = log.read_text(encoding="utf-8")
+    assert "tools/get_availability 422" in text and "date=2026-10-27" in text
+    assert "9812345678" not in text

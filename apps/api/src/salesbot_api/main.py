@@ -25,7 +25,9 @@ app.include_router(voice_webhooks.router)
 demo_routes.mount(app, get_settings())
 # Voice request log for the first voice tests (salesbot_api.voice.calllog): off unless set.
 if get_settings().voice_call_log:
-    voice_calllog.install(app, get_settings().voice_call_log)
+    voice_calllog.install(
+        app, get_settings().voice_call_log, with_fields=get_settings().voice_call_log_fields
+    )
 
 
 @app.exception_handler(RequestValidationError)

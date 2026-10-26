@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     # File for one line per voice request (name, status, duration; no bodies). Set by
     # `make voice-tunnel`; read with `make voice-tools-log`. Empty = off.
     voice_call_log: str | None = None
+    # Temporary debugging: add non-personal request fields to those lines (calllog.FIELDS).
+    voice_call_log_fields: bool = False
     sarvam_voice_api_key: SecretStr | None = None
     sarvam_org_id: str | None = None
     sarvam_workspace_id: str | None = None
