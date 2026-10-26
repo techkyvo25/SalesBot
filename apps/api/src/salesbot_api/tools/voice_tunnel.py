@@ -32,10 +32,12 @@ from pathlib import Path
 
 from salesbot_api.demo.seed import demo_clinic
 from salesbot_api.settings import Settings
+from salesbot_api.tools.voice_paste import paste_text
 from salesbot_core.voice import VOICE_TOOLS
 
 LOCAL = Path(".local")
 URLS = LOCAL / "voice-urls.txt"
+PASTE = LOCAL / "voice-tools.txt"
 PIDS = LOCAL / "voice-tunnel.pids"
 API_LOG = LOCAL / "api.log"
 TUNNEL_LOG = LOCAL / "cloudflared.log"
@@ -209,8 +211,10 @@ def start() -> int:
         + "".join(f"{label}: {url}\n" for label, url in urls.items()),
         encoding="utf-8",
     )
+    PASTE.write_text(paste_text(base), encoding="utf-8")
     print(f"API on 127.0.0.1:{PORT} (DEMO_MODE=false), tunnel up.")
     print(f"Full URLs: {URLS.resolve()}")
+    print(f"Paste text for the 8 tools and 2 hooks (no secret): {PASTE.resolve()}")
     for label in ("tool base", "on-start hook", "on-end hook", "webhook inbound"):
         print(f"  {label}: {mask(urls[label], token)}")
     print(
@@ -230,6 +234,7 @@ def stop(quiet: bool = False) -> int:
         _kill(int(pid))
     PIDS.unlink()
     URLS.unlink(missing_ok=True)  # stale once the tunnel is gone
+    PASTE.unlink(missing_ok=True)
     if not quiet:
         print("stopped the tunnel and the API")
     return 0

@@ -192,3 +192,20 @@ def test_voice_test_patient_is_idempotent_and_removable(db_url, conn):
 
 def test_voice_test_patient_id_is_fixed():
     assert uuid.UUID("7e570000-0000-4000-8000-000000000001") == seed.VOICE_TEST_PATIENT_ID
+
+
+# -- paste text for Sarvam --------------------------------------------------------------------
+
+
+def test_paste_text_covers_every_tool_and_hook_without_the_secret():
+    from salesbot_api.tools.voice_paste import paste_text
+
+    base = "https://quiet-river-abc123.trycloudflare.com"
+    text = paste_text(base)
+    api = f"{base}/api/v1/voice"
+    assert f"{api}/hooks/on-start" in text and f"{api}/hooks/on-end" in text
+    for spec in VOICE_TOOLS:
+        assert f"TOOL  {spec.name}" in text and f"{api}/tools/{spec.name}" in text
+    assert text.count("Bearer token") == len(VOICE_TOOLS) + 2
+    assert "webhooks/" not in text  # the webhook token never goes in this file
+    assert TOOL not in text and HOOK not in text

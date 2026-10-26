@@ -119,7 +119,9 @@ class RenderedAgent:
         return "\n".join(out) + "\n"
 
 
-def _curl(spec: ToolSpec, api_base: str) -> str:
+def tool_body(spec: ToolSpec) -> dict[str, object]:
+    """The tool's JSON body as the builder needs it: `@name` = insert that variable with `@`;
+    model-chosen fields show an example or `<description>`."""
     body: dict[str, object] = {}
     for f in (*COMMON_FIELDS, *spec.fields):
         kind, _, name = f.source.partition(":")
@@ -128,7 +130,11 @@ def _curl(spec: ToolSpec, api_base: str) -> str:
         else:
             # Replace with the matching variable using @ in Sarvam's tool editor.
             body[f.name] = f"@{name}"
-    payload = json.dumps(body, ensure_ascii=False, indent=2)
+    return body
+
+
+def _curl(spec: ToolSpec, api_base: str) -> str:
+    payload = json.dumps(tool_body(spec), ensure_ascii=False, indent=2)
     return (
         f"curl -X POST '{api_base}/api/v1/voice/tools/{spec.name}' \\\n"
         "  -H 'Authorization: Bearer <VOICE_TOOL_SECRET from Sarvam Secrets>' \\\n"
