@@ -3,7 +3,7 @@
 
 ADMIN := apps/admin
 
-.PHONY: help setup dev-api dev-admin require-docker db-up db-down db-reset migrate test lint format load-clinic simulate-intake console demo demo-seed demo-reset voice-agent voice-ops voice-tunnel voice-tunnel-stop voice-tunnel-check voice-tools-log voice-test-patient voice-test-patient-remove
+.PHONY: help setup dev-api dev-admin require-docker db-up db-down db-reset migrate test lint format load-clinic simulate-intake console demo demo-seed demo-reset voice-agent voice-ops voice-tunnel voice-tunnel-stop voice-api-restart voice-tunnel-check voice-tools-log voice-test-patient voice-test-patient-remove
 
 help:
 	@echo "setup      install Python (uv) + admin (npm) deps and git hooks"
@@ -104,6 +104,9 @@ voice-tunnel:
 
 voice-tunnel-stop:
 	uv run --package salesbot-api python -m salesbot_api.tools.voice_tunnel stop
+
+voice-api-restart:
+	uv run --package salesbot-api python -m salesbot_api.tools.voice_tunnel restart-api
 
 voice-tunnel-check:
 	uv run --package salesbot-api python -m salesbot_api.tools.voice_tunnel check

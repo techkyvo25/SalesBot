@@ -3,6 +3,7 @@
     make voice-tunnel          # API on 127.0.0.1 (DEMO_MODE=false) + Cloudflare quick tunnel
     make voice-tunnel-check    # /health 200, tool without token 401, tool with token 200
     make voice-tunnel-stop     # stop both
+    make voice-api-restart     # restart only the API (same tunnel address), e.g. new secret
     make voice-tools-log       # last 20 voice requests (endpoint, status, duration)
 
 Refuses to start with DEMO_MODE=true (the demo routes have no login) or when APP_ENV is not
@@ -154,6 +155,55 @@ def _get(url: str, headers: dict[str, str] | None = None, body: bytes | None = N
 # -- commands -----------------------------------------------------------------------------
 
 
+def _api_env() -> dict[str, str]:
+    return {**os.environ, "DEMO_MODE": "false", "VOICE_CALL_LOG": str(CALL_LOG.resolve())}
+
+
+def _spawn_api(env: dict[str, str]) -> int:
+    return _spawn(
+        [sys.executable, "-m", "uvicorn", "salesbot_api.main:app", "--host", "127.0.0.1",
+         "--port", str(PORT), "--no-access-log"],
+        API_LOG,
+        env,
+    )  # fmt: skip
+
+
+def _api_up(want: bool = True) -> bool:
+    for _ in range(40):
+        if (_get(f"http://127.0.0.1:{PORT}/health") == 200) == want:
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def restart_api() -> int:
+    """Restart only the API (it reads .env again, e.g. after rotating VOICE_TOOL_SECRET). The
+    tunnel keeps running, so its address does not change."""
+    settings = Settings()
+    reason = refuse_reason(settings, os.environ)
+    if reason:
+        print(f"refused: {reason}", file=sys.stderr)
+        return 2
+    if not PIDS.exists():
+        print("not running: `make voice-tunnel` first", file=sys.stderr)
+        return 2
+    pids = json.loads(PIDS.read_text())
+    if not _alive(int(pids.get("tunnel", 0))):
+        print("the tunnel is not running: `make voice-tunnel-stop`, then `make voice-tunnel`")
+        return 2
+    _kill(int(pids["api"]))
+    if not _api_up(want=False):
+        print("the old API did not stop", file=sys.stderr)
+        return 1
+    pids["api"] = _spawn_api(_api_env())
+    PIDS.write_text(json.dumps(pids))
+    if not _api_up():
+        print(f"the API did not start: see {API_LOG}", file=sys.stderr)
+        return 1
+    print("API restarted; the tunnel kept running (same address).")
+    return 0
+
+
 def start() -> int:
     settings = Settings()
     reason = refuse_reason(settings, os.environ)
@@ -168,20 +218,10 @@ def start() -> int:
         print(f"cloudflared not found. Install: {INSTALL_HINT}", file=sys.stderr)
         return 2
     LOCAL.mkdir(exist_ok=True)
-    env = {**os.environ, "DEMO_MODE": "false", "VOICE_CALL_LOG": str(CALL_LOG.resolve())}
-    api = _spawn(
-        [sys.executable, "-m", "uvicorn", "salesbot_api.main:app", "--host", "127.0.0.1",
-         "--port", str(PORT), "--no-access-log"],
-        API_LOG,
-        env,
-    )  # fmt: skip
-    pids = {"api": api}
+    env = _api_env()
+    pids = {"api": _spawn_api(env)}
     PIDS.write_text(json.dumps(pids))
-    for _ in range(40):
-        if _get(f"http://127.0.0.1:{PORT}/health") == 200:
-            break
-        time.sleep(0.5)
-    else:
+    if not _api_up():
         print(f"the API did not start: see {API_LOG}", file=sys.stderr)
         stop(quiet=True)
         return 1
@@ -274,9 +314,10 @@ def check() -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Quick tunnel for the first voice test")
-    parser.add_argument("command", choices=["start", "stop", "check"])
+    parser.add_argument("command", choices=["start", "stop", "check", "restart-api"])
     args = parser.parse_args(argv)
-    return {"start": start, "stop": stop, "check": check}[args.command]()
+    commands = {"start": start, "stop": stop, "check": check, "restart-api": restart_api}
+    return commands[args.command]()
 
 
 if __name__ == "__main__":
