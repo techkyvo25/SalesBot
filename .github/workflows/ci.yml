@@ -3,7 +3,8 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    # Every push runs the checks, database tests included (PRs are not used for now).
+    branches: [main, "feature/**", "demo/**", "chore/**"]
 
 permissions:
   contents: read
