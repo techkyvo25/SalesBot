@@ -3,7 +3,7 @@
 How to set up the clinic's agent on Sarvam Voice Agents (the owner clicks through this; nothing
 here is automated). The pack is the source of truth: the instruction, greetings, sincere-ask
 lines, knowledge-base text and tool cURLs at the end are **generated** by
-`make voice-agent PACK=clinic` (a test fails if this file falls behind the pack).
+`make voice-agent PACK=clinic` (a test fails if this file falls behind the pack). `make voice-agent PACK=clinic LITERAL=1` prints the same text with the demo clinic's name, phone and emergency numbers written in and no {{variables}} (Context and Steps rely on identify_patient instead).
 
 Field names and limits come from docs.sarvam.ai (read 23 Oct 2026, labels rechecked 26 Oct 2026). Where the docs are silent,
 this file says so instead of guessing.
@@ -283,9 +283,9 @@ Reply in the caller's language: English, Hindi or Marathi, only if the clinic of
 
 ### Greeting (per starting language)
 
-- **English:** Hello, thank you for calling {{clinic_name}}. How can we help you today?
-- **Hindi:** नमस्ते, {{clinic_name}} में कॉल करने के लिए धन्यवाद। हम आपकी क्या मदद कर सकते हैं?
-- **Marathi:** नमस्कार, {{clinic_name}} मध्ये फोन केल्याबद्दल धन्यवाद. आम्ही तुमची काय मदत करू शकतो?
+- **English:** Hello, thank you for calling {{clinic_name}}. How can I help you today?
+- **Hindi:** नमस्ते, {{clinic_name}} में कॉल करने के लिए धन्यवाद। मैं आपकी कैसे मदद करूँ?
+- **Marathi:** नमस्कार, {{clinic_name}} मध्ये फोन केल्याबद्दल धन्यवाद. मी तुमची कशी मदत करू?
 
 ### Sincere-ask answer (the only line that may mention automation)
 
@@ -297,7 +297,7 @@ Reply in the caller's language: English, Hindi or Marathi, only if the clinic of
 
 ```text
 Q: Is the doctor good?
-A: The clinic team can answer questions about our doctors. Choose Talk to clinic and they will contact you.
+A: I can't speak to that. I can ask the clinic team to call you back about the doctors.
 ```
 
 ### API tools (cURL to import)
