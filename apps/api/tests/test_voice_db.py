@@ -124,6 +124,26 @@ def test_shared_number_lists_candidates(api, slug, clinic):
     assert picked["code"] == "ok" and picked["data"]["patient_id"] == str(clinic.client_id)
 
 
+TODAY = {
+    "today_weekday": "Monday",
+    "today_date": "2030-01-07",
+    "time_now": "08:00",
+    "timezone": "Asia/Kolkata (IST)",
+}
+
+
+def test_identify_returns_today_in_india(api, slug, clinic):
+    """Every identify_patient answer carries today's weekday, date and time in IST; the spoken
+    line stays as before."""
+    listed = call(api, "identify_patient", slug)
+    picked = call(api, "identify_patient", slug, patient_id=str(clinic.client_id))
+    unknown = call(api, "identify_patient", slug, caller_phone="+919111111111")
+    for r in (listed, picked, unknown):
+        assert {k: r["data"][k] for k in TODAY} == TODAY
+        for value in TODAY.values():
+            assert value not in r["spoken_text"]
+
+
 def test_unknown_number_is_not_registered(api, slug):
     r = call(api, "identify_patient", slug, caller_phone="+919111111111")
     assert (r["ok"], r["code"], r["next_step"]) == (False, "not_registered", "offer_callback")

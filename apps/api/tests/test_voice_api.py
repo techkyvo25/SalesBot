@@ -290,3 +290,15 @@ def test_spend_cap_defaults(voice_settings):
     assert voice_settings.spend_session_cap_inr == Decimal(100)
     assert voice_settings.spend_daily_cap_inr == Decimal(500)
     assert voice_settings.outbound_calls_enabled is False
+
+
+def test_today_is_reported_in_india():
+    from datetime import UTC, datetime
+
+    today = tools._today(datetime(2026, 10, 26, 13, 50, tzinfo=UTC))
+    assert today == {
+        "today_weekday": "Monday",
+        "today_date": "2026-10-26",
+        "time_now": "19:20",
+        "timezone": "Asia/Kolkata (IST)",
+    }

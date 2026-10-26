@@ -377,6 +377,20 @@ def _slot_data(ctx: Ctx, appt: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+IST = ZoneInfo("Asia/Kolkata")
+
+
+def _today(now: datetime) -> dict[str, str]:
+    """Today in India, for the agent (it has no reliable clock of its own)."""
+    local = now.astimezone(IST)
+    return {
+        "today_weekday": local.strftime("%A"),
+        "today_date": local.date().isoformat(),
+        "time_now": local.strftime("%H:%M"),
+        "timezone": "Asia/Kolkata (IST)",
+    }
+
+
 def _identify(ctx: Ctx, req: IdentifyIn) -> ToolResult:
     if req.patient_id is not None and not ctx.caller_phone:
         # Outbound: we started the call, so the patient is known from our own variables.
@@ -389,7 +403,11 @@ def _identify(ctx: Ctx, req: IdentifyIn) -> ToolResult:
         candidates = [c for c in candidates if c["id"] == req.patient_id]
     if not candidates:
         return ctx.result(
-            "not_registered", ok=False, code="not_registered", next_step="offer_callback"
+            "not_registered",
+            ok=False,
+            code="not_registered",
+            next_step="offer_callback",
+            data=_today(ctx.now),
         )
     if len(candidates) > 1:
         return ctx.result(
@@ -398,7 +416,8 @@ def _identify(ctx: Ctx, req: IdentifyIn) -> ToolResult:
             next_step="ask_which_patient",
             names=", ".join(c["name"] for c in candidates),
             data={
-                "candidates": [{"patient_id": str(c["id"]), "name": c["name"]} for c in candidates]
+                "candidates": [{"patient_id": str(c["id"]), "name": c["name"]} for c in candidates],
+                **_today(ctx.now),
             },
         )
     client = candidates[0]
@@ -408,6 +427,7 @@ def _identify(ctx: Ctx, req: IdentifyIn) -> ToolResult:
         "patient_name": client["name"],
         "preferred_language": SARVAM_LANGUAGE_NAMES.get(client["preferred_language"], "English"),
         "appointment_id": "",
+        **_today(ctx.now),
     }
     upcoming = store.upcoming_appointment(ctx.conn, ctx.business.id, client["id"], ctx.now)
     if upcoming is None:
