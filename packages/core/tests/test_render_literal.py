@@ -76,6 +76,22 @@ def test_clinic_values_from_a_clinic_file(tmp_path):
     }
 
 
+# -- knowledge base ---------------------------------------------------------------------------
+
+DOCTOR_QA = (
+    "Q: Is the doctor good?\nA: I can't speak to that. I can ask the clinic team to call you "
+    "back about the doctors."
+)
+
+
+@pytest.mark.parametrize("rendered", [GENERATED, LITERAL], ids=["generated", "literal"])
+def test_knowledge_base_has_no_button_or_team_wording(rendered):
+    kb = rendered.knowledge_base
+    assert "Choose Talk to clinic" not in kb
+    assert "our doctors" not in kb.lower()
+    assert DOCTOR_QA in kb
+
+
 # -- the speaker is not part of the clinic team -----------------------------------------------
 
 TEAM_WORDS_EN = re.compile(r"\b(we|our team)\b", re.IGNORECASE)

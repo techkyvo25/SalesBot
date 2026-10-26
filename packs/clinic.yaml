@@ -186,6 +186,7 @@ faqs:
                "doctor experienced", "experienced", "qualified", "reviews", "rating",
                "doctor accha", "doctor achha", "acche doctor", "अच्छे डॉक्टर", "डॉक्टर अच्छे"]
     question: { en: "Is the doctor good?" }
+    voice_answer: "I can't speak to that. I can ask the clinic team to call you back about the doctors."
     answer:
       en: "The clinic team can answer questions about our doctors. Choose Talk to clinic and they will contact you."
       hi: "डॉक्टरों के बारे में सवालों के जवाब क्लिनिक की टीम दे सकती है। 'क्लिनिक से बात करें' चुनें, टीम आपसे संपर्क करेगी।"

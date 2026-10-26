@@ -74,6 +74,9 @@ class FAQ(_Strict):
     source: Literal["text", "opening_hours"] = "text"
     # Offer "Talk to clinic" with the answer.
     offer_human: bool = False
+    # English answer for the voice agent's knowledge base when the text answer does not fit a
+    # call (for example it names a button). None = use answer["en"].
+    voice_answer: str | None = None
     demo: bool = False
 
 

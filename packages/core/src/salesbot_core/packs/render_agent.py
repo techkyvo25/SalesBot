@@ -155,7 +155,7 @@ def render(
     sections = [f"## {title}\n{body.format(**values)}" for title, body in bodies.items()]
     # Fixed text only: demo FAQs are fictional, and opening hours come from the database.
     faqs = [
-        f"Q: {faq.question['en']}\nA: {faq.answer['en'].format(**variables)}"
+        f"Q: {faq.question['en']}\nA: {(faq.voice_answer or faq.answer['en']).format(**variables)}"
         for faq in pack.faqs
         if faq.source == "text" and not faq.demo
     ]
