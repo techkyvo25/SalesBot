@@ -10,20 +10,20 @@ business rules live in our API and Postgres. Background: [README](../README.md),
 
 ## 2. Where the code is
 
-The branches are stacked. Each one contains everything before it:
+Three branches. Each one contains everything in the one above it:
 
-| Order | Branch | Commit | What it adds |
-|---|---|---|---|
-| 0 | `main` | `a9292aa` | Project scaffold only (PR #1) |
-| 1 | `feature/anvia-phase1` | `f0abf7e` | Scheduling, booking engine, intake webhook |
-| 2 | `feature/anvia-stage-b` | `0153f55` | Conversation engine, languages, text console |
-| 3 | `feature/anvia-sarvam` | `79ec231` | Voice backend for Sarvam, cost tracking, spend guard |
-| 4 | `demo/smallest-demo` | latest commit (this file is on it) | Engine on the database, fixes, demo page |
+| Branch | Commit | What it holds |
+|---|---|---|
+| `main` | `a9292aa` | Project scaffold only (PR #1) |
+| `feature/anvia-phase1` | `79ec231` | The 7-stage build so far: scheduling, booking engine, intake webhook (stage A), conversation engine and languages (B), voice backend for Sarvam, cost tracking, spend guard (E) |
+| `demo/smallest-demo` | latest commit (this file is on it) | All of the above plus the engine on the database, fixes and the demo page |
 
-**Start new work from `demo/smallest-demo`.** It contains everything. PRs #2, #3 and #4 were
-closed without merging on 26 Oct 2026 (the owner's decision): work continues on branches, and
-nothing goes to `main` without agreement. CI runs on every push to `feature/**`, `demo/**` and
-`chore/**`.
+**Start new work from `demo/smallest-demo`.** It contains everything. Stage work that should not
+carry the demo can go on `feature/anvia-phase1`. PRs #2, #3 and #4 were closed without merging
+on 26 Oct 2026 (the owner's decision): work continues on branches, and nothing goes to `main`
+without agreement. The old branches `feature/anvia-stage-b`, `feature/anvia-sarvam` and
+`chore/scaffold` were deleted the same day; their commits are all in the branches above. CI runs
+on every push to `feature/**`, `demo/**` and `chore/**`.
 
 ## 3. Done
 

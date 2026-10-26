@@ -1,7 +1,7 @@
 # Status
 
 Where Anvia Phase 1 stands, stage by stage, with evidence. Updated 2026-10-26 on
-`demo/smallest-demo` (stacked on `feature/anvia-sarvam`; PRs #2 to #4 closed unmerged
+`demo/smallest-demo` (stacked on `feature/anvia-phase1`; PRs #2 to #4 closed unmerged
 on 2026-10-26, see docs/HANDOVER.md). The stage plan was paused on
 2026-10-25 for the smallest credible demo (docs/DEMO.md).
 
