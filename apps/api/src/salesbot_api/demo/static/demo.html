@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clinic Demo</title>
+<style>
+  :root {
+    --bg: #0f1419; --panel: #1a2129; --line: #33404d; --text: #f2f5f7; --muted: #aab6c2;
+    --accent: #4fc3f7; --patient: #2e7d32; --clinic: #263544; --warn: #ffb300;
+    --urgent: #ff5252; --draft: #ffd54f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 20px/1.4 system-ui, "Segoe UI", "Noto Sans", "Noto Sans Devanagari", sans-serif; }
+  .banner { background: var(--warn); color: #111; font-weight: 700; padding: 10px 16px;
+            text-align: center; font-size: 22px; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 16px;
+         padding: 16px; height: calc(100vh - 52px); }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+            padding: 12px 14px; min-height: 0; }
+  h2 { margin: 0 0 8px; font-size: 22px; color: var(--accent); }
+  .left { display: flex; flex-direction: column; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
+  button, select, input { font: inherit; border-radius: 8px; border: 1px solid var(--line);
+                          background: #23303c; color: var(--text); padding: 8px 12px; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: #0277bd; border-color: #0277bd; }
+  button.danger { background: #6d1b1b; border-color: #8e2b2b; }
+  #log { flex: 1; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 88%; padding: 10px 12px; border-radius: 10px; white-space: pre-wrap; }
+  .msg.patient { align-self: flex-end; background: var(--patient); }
+  .msg.clinic { align-self: flex-start; background: var(--clinic); border: 1px solid var(--line); }
+  .msg.system { align-self: center; background: transparent; color: var(--muted); font-size: 17px;
+                text-align: center; }
+  .tags { display: flex; gap: 6px; margin-bottom: 4px; font-size: 15px; }
+  .tag { border: 1px solid var(--muted); border-radius: 6px; padding: 0 6px; color: var(--muted); }
+  .tag.draft { border-color: var(--draft); color: #111; background: var(--draft); font-weight: 700; }
+  .note { margin-top: 6px; font-size: 16px; color: var(--warn); }
+  .live { font-size: 26px; font-weight: 700; letter-spacing: 0.5px; }
+  .wording { margin-top: 6px; font-size: 16px; color: var(--muted); }
+  .options { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .options button { font-size: 17px; padding: 6px 10px; }
+  form { display: flex; gap: 8px; margin-top: 10px; }
+  form input { flex: 1; }
+  .right { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 12px;
+           background: none; border: none; padding: 0; overflow: auto; }
+  .days { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 18px; }
+  th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  .st-cancelled, .st-rescheduled { color: var(--muted); text-decoration: line-through; }
+  .st-held { color: var(--warn); }
+  .st-confirmed { color: #81c784; font-weight: 700; }
+  .funnel { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .tile { background: #23303c; border-radius: 8px; padding: 8px; text-align: center; }
+  .tile b { display: block; font-size: 34px; }
+  .tile span { color: var(--muted); font-size: 16px; }
+  .task { padding: 6px 8px; border-left: 5px solid var(--line); margin-bottom: 6px;
+          background: #20282f; border-radius: 4px; }
+  .task.urgent { border-left-color: var(--urgent); background: #3a1d1d; }
+  .task .kind { font-weight: 700; }
+  .muted { color: var(--muted); font-size: 16px; }
+  .daynav { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="banner">DEMO MODE: fake data. Registration, WhatsApp messages and phone calls are simulated.</div>
+<main>
+  <section class="left">
+    <h2>Patient chat</h2>
+    <div class="controls">
+      <button class="primary" id="register">Register patient (simulated)</button>
+      <button id="take">Another patient takes this slot</button>
+      <button class="danger" id="reset">Reset demo</button>
+      <label class="muted">Chat as
+        <select id="patient">
+          <option value="demo-asha">Asha</option>
+          <option value="demo-ravi">Ravi</option>
+          <option value="demo-meera">Meera</option>
+        </select>
+      </label>
+    </div>
+    <div id="log" aria-live="polite"></div>
+    <form id="send">
+      <input id="text" autocomplete="off" placeholder="Type as the patient (English or Hindi)">
+      <button class="primary" type="submit">Send</button>
+    </form>
+  </section>
+  <section class="right">
+    <section>
+      <div class="daynav">
+        <h2 style="margin:0">Doctors' day</h2>
+        <button id="prev">‹</button><span id="daylabel"></span><button id="next">›</button>
+        <span class="muted">times in IST</span>
+      </div>
+      <div class="days" id="days"></div>
+    </section>
+    <section>
+      <h2>Funnel (from the events table)</h2>
+      <div class="funnel" id="funnel"></div>
+    </section>
+    <section style="overflow:auto">
+      <h2>Staff tasks</h2>
+      <div class="muted" style="margin-bottom:8px">No alert reaches a person yet: tasks only show here.</div>
+      <div id="tasks"></div>
+    </section>
+  </section>
+</main>
+<script src="/demo/demo.js"></script>
+</body>
+</html>

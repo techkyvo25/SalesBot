@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from salesbot_api import api_v1, db
 from salesbot_api.auth import AuthUser, current_user
+from salesbot_api.demo import routes as demo_routes
 from salesbot_api.settings import Settings, get_settings
 from salesbot_api.voice import tools as voice_tools
 from salesbot_api.voice import webhooks as voice_webhooks
@@ -19,6 +20,8 @@ app = FastAPI(title="SalesBot API", version="0.1.0")
 app.include_router(api_v1.router)
 app.include_router(voice_tools.router)
 app.include_router(voice_webhooks.router)
+# Local demo page (docs/DEMO.md): only with DEMO_MODE=true and APP_ENV=local.
+demo_routes.mount(app, get_settings())
 
 
 @app.exception_handler(RequestValidationError)
