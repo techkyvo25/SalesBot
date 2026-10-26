@@ -55,6 +55,13 @@ PATIENTS = [
 LIVE_PATIENT = FakePatient("demo-asha", "Asha Demo", "+910000000003", "en")
 
 
+# For Sarvam's browser "test agent" (docs/SARVAM_AGENT.md, browser test). A browser session
+# has no caller number, so the test overrides the agent variable `patient_id` with this fixed
+# id. The number is not dialable. Added and removed on its own: `make voice-test-patient`.
+VOICE_TEST_PATIENT_ID = UUID("7e570000-0000-4000-8000-000000000001")
+VOICE_TEST_PATIENT = FakePatient("voice-test", "Voice Test Patient (fake)", "+910000000099", "en")
+
+
 class RefusedError(Exception):
     """The database or settings do not look like a local demo."""
 
@@ -195,14 +202,61 @@ def _has_upcoming(
     )
 
 
+def add_voice_test_patient(conn: psycopg.Connection, settings: Settings, now: datetime) -> bool:
+    """Idempotent. The demo clinic must exist. Returns whether the patient was created.
+    source = test_call keeps it out of the funnel."""
+    check_safe(conn, settings)
+    bid = find_demo(conn)
+    if bid is None:
+        raise RefusedError("no demo clinic: run `make demo-reset` first")
+    p = VOICE_TEST_PATIENT
+    row = conn.execute(
+        """
+        insert into public.clients (id, business_id, external_id, name, phone,
+          preferred_language, whatsapp_opt_in, call_opt_in, consent_at, consent_source, source)
+        values (%s, %s, %s, %s, %s, %s, false, true, %s, %s, 'test_call')
+        on conflict do nothing
+        returning id
+        """,
+        (VOICE_TEST_PATIENT_ID, bid, p.external_id, p.name, p.phone, p.language, now,
+         "voice test (fake patient, no real consent form)"),
+    ).fetchone()  # fmt: skip
+    return row is not None
+
+
+def remove_voice_test_patient(conn: psycopg.Connection, settings: Settings) -> bool:
+    """Deletes the voice test patient (and, by cascade, its appointments and tasks)."""
+    check_safe(conn, settings)
+    bid = find_demo(conn)
+    if bid is None:
+        return False
+    row = conn.execute(
+        "delete from public.clients where id = %s and business_id = %s returning id",
+        (VOICE_TEST_PATIENT_ID, bid),
+    ).fetchone()
+    return row is not None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Seed or reset the demo clinic (fake data)")
-    parser.add_argument("action", choices=["seed", "reset"])
+    parser.add_argument(
+        "action", choices=["seed", "reset", "voice-patient", "voice-patient-remove"]
+    )
     args = parser.parse_args(argv)
     settings = Settings()
     now = datetime.now(UTC)
     try:
         with db.connect(settings, autocommit=True) as conn:
+            if args.action == "voice-patient":
+                created = add_voice_test_patient(conn, settings, now)
+                print(f"voice test patient {'added' if created else 'already there'}")
+                print(f"  clinic_slug = {demo_clinic().slug}")
+                print(f"  patient_id  = {VOICE_TEST_PATIENT_ID}")
+                return 0
+            if args.action == "voice-patient-remove":
+                gone = remove_voice_test_patient(conn, settings)
+                print("voice test patient removed" if gone else "no voice test patient")
+                return 0
             if args.action == "reset":
                 print("demo clinic deleted" if reset(conn, settings) else "no demo clinic yet")
             bid = seed(conn, settings, now)
