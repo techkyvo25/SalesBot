@@ -80,6 +80,8 @@ make db-reset                      # applies supabase/migrations + seed.sql
 | `setup` | Install Python (uv workspace) and admin (npm) deps, install pre-commit hooks |
 | `dev-api` | FastAPI with reload on :8000 |
 | `console` | Chat with the appointment flow in the terminal, no DB (`ARGS='--lang mr'`) |
+| `demo` | Local demo page on http://127.0.0.1:8000/demo (fake clinic, `DEMO_MODE` for that process only; docs/DEMO.md) |
+| `demo-seed` / `demo-reset` | Seed / delete and re-seed the fake demo clinic only; refuse production-like databases |
 | `voice-agent` | Render the Sarvam agent's instruction, greetings, KB text and tool cURLs from a pack (`PACK=clinic`) |
 | `voice-ops` | Spend caps, test-run guard, outbound dry run, cost actuals (`ARGS='spend'`, see docs/COSTS.md) |
 | `dev-admin` | Admin app on :5173 |
@@ -108,7 +110,8 @@ apps/
 packages/core/    Shared Python: packs, flow engine, text, scheduling, costs (rates.yaml), voice lines
 packs/            Industry packs (clinic.yaml, dentist.yaml, salon.yaml)
 supabase/         config.toml, migrations/ (the only schema source), seed.sql, tests/ (RLS isolation)
-docs/             ARCHITECTURE, GTM, DECISIONS, PROVIDERS, COSTS, SARVAM_AGENT, INTAKE_CONTRACT
+docs/             ARCHITECTURE, GTM, DECISIONS, PROVIDERS, COSTS, SARVAM_AGENT, INTAKE_CONTRACT,
+                  DEMO (local demo), STATUS (stages and evidence)
 ```
 
 ## Status and roadmap

@@ -1,6 +1,6 @@
 # Demo clinic: FAKE data only (docs/DEMO.md). Loaded by `make demo-seed` / `make demo-reset`.
 # Open every day so the demo works on any date; times are local (Asia/Kolkata).
-name: Sunrise Clinic (DEMO)
+name: Demo Clinic
 slug: anvia-demo-clinic
 pack: clinic
 timezone: Asia/Kolkata
