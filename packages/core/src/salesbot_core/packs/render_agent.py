@@ -1,12 +1,18 @@
 """Render the Sarvam voice agent's setup from a pack, so the pack stays the source of truth.
 
     uv run python -m salesbot_core.packs.render_agent --pack clinic [--api-base https://...]
+    uv run python -m salesbot_core.packs.render_agent --pack clinic --literal \
+        --clinic-file apps/api/src/salesbot_api/demo/clinic.yaml
 
 Prints Markdown: the instruction, the greeting and sincere-ask line per language, the
 knowledge-base text from the pack's FAQs, and every API tool as a cURL command to import in
 Sarvam's tool builder. docs/SARVAM_AGENT.md embeds this output for the clinic pack; a test
 checks it is current. Values that differ per call or per clinic stay Sarvam agent variables
 ({{clinic_name}}, {{patient_name}}, ...), filled by our on-start hook.
+
+Literal mode (`--literal`) writes one clinic's name, phone and emergency numbers into the
+text and leaves no {{...}} at all: the pack's `voice.literal` sections replace the ones that
+use per-call variables (the agent learns the caller and today's date from identify_patient).
 
 The wording scan (salesbot_core.text.wording) runs over everything rendered here; only the
 sincere-ask lines are allowlisted.
@@ -16,7 +22,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
+
+import yaml
 
 from salesbot_core.packs import Pack, load_all_packs
 from salesbot_core.packs.schema import Language
@@ -45,6 +55,29 @@ AGENT_VARIABLES: dict[str, str] = {
 DEFAULT_API_BASE = "https://YOUR-API-HOST"
 BEGIN = "<!-- BEGIN GENERATED: render_agent --pack {pack} -->"
 END = "<!-- END GENERATED -->"
+
+
+@dataclass(frozen=True)
+class ClinicValues:
+    """What literal mode writes in instead of agent variables."""
+
+    name: str
+    phone: str
+    emergency_numbers: list[str] = field(default_factory=lambda: ["112", "108"])
+
+    @classmethod
+    def from_file(cls, path: Path) -> ClinicValues:
+        """A clinic YAML (the load_clinic format): name, contact_phone, emergency_numbers."""
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        numbers = data.get("emergency_numbers") or ["112", "108"]
+        return cls(data["name"], data["contact_phone"], [str(n) for n in numbers])
+
+    def variables(self) -> dict[str, str]:
+        return {
+            "business_name": self.name,
+            "clinic_phone": self.phone,
+            "emergency_numbers": " / ".join(self.emergency_numbers),
+        }
 
 
 def _var(name: str) -> str:
@@ -104,19 +137,25 @@ def _curl(spec: ToolSpec, api_base: str) -> str:
     )
 
 
-def render(pack: Pack, *, api_base: str = DEFAULT_API_BASE) -> RenderedAgent:
+def render(
+    pack: Pack, *, api_base: str = DEFAULT_API_BASE, literal: ClinicValues | None = None
+) -> RenderedAgent:
     check_voice_pack(pack)
     if pack.voice is None or pack.conversation is None:
         raise ValueError(f"pack {pack.id!r} needs voice and conversation sections")
-    emergency = pack.conversation.messages["emergency"]["en"].format(**_VARS)
-    sincere = {lang: text.format(**_VARS) for lang, text in pack.voice.sincere_ask_answer.items()}
-    values = {**_VARS, "emergency_line": emergency, "sincere_ask_answer": sincere["en"]}
-    sections = [
-        f"## {title}\n{body.format(**values)}" for title, body in pack.voice.instruction.items()
-    ]
+    variables = literal.variables() if literal is not None else _VARS
+    emergency = pack.conversation.messages["emergency"]["en"].format(**variables)
+    sincere = {
+        lang: text.format(**variables) for lang, text in pack.voice.sincere_ask_answer.items()
+    }
+    values = {**variables, "emergency_line": emergency, "sincere_ask_answer": sincere["en"]}
+    bodies = dict(pack.voice.instruction)
+    if literal is not None:
+        bodies |= pack.voice.literal
+    sections = [f"## {title}\n{body.format(**values)}" for title, body in bodies.items()]
     # Fixed text only: demo FAQs are fictional, and opening hours come from the database.
     faqs = [
-        f"Q: {faq.question['en']}\nA: {faq.answer['en'].format(**_VARS)}"
+        f"Q: {faq.question['en']}\nA: {faq.answer['en'].format(**variables)}"
         for faq in pack.faqs
         if faq.source == "text" and not faq.demo
     ]
@@ -128,7 +167,7 @@ def render(pack: Pack, *, api_base: str = DEFAULT_API_BASE) -> RenderedAgent:
     return RenderedAgent(
         pack_id=pack.id,
         instruction="\n\n".join(sections),
-        greetings={lang: text.format(**_VARS) for lang, text in pack.greeting.items()},
+        greetings={lang: text.format(**variables) for lang, text in pack.greeting.items()},
         sincere_ask=sincere,
         knowledge_base="\n\n".join(faqs) or "(no FAQs in this pack)",
         curl={spec.name: _curl(spec, api_base) for spec in VOICE_TOOLS},
@@ -140,9 +179,19 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--pack", required=True)
     parser.add_argument("--api-base", default=DEFAULT_API_BASE)
+    parser.add_argument("--literal", action="store_true", help="no {{variables}}: see above")
+    parser.add_argument("--clinic-file", type=Path, help="with --literal: a clinic YAML")
     args = parser.parse_args(argv)
+    if args.literal and args.clinic_file is None:
+        parser.error("--literal needs --clinic-file")
     pack = load_all_packs()[args.pack]
-    print(render(pack, api_base=args.api_base).markdown(), end="")
+    literal = ClinicValues.from_file(args.clinic_file) if args.literal else None
+    rendered = render(pack, api_base=args.api_base, literal=literal)
+    if literal is not None and "{{" in rendered.markdown():
+        raise SystemExit("literal output still has {{...}}: add a voice.literal section")
+    # Hindi and Marathi lines: a Windows console defaults to a code page that cannot print them.
+    sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+    print(rendered.markdown(), end="")
 
 
 if __name__ == "__main__":

@@ -150,9 +150,19 @@ class VoiceText(_Strict):
     """
 
     instruction: dict[str, str] = Field(min_length=1)
+    # Literal mode (`render_agent --literal`): sections replaced when the clinic's name, phone
+    # and emergency numbers are written in instead of agent variables. Same titles only.
+    literal: dict[str, str] = Field(default_factory=dict)
     messages: dict[str, LocalizedText]
     sincere_ask_answer: LocalizedText
     sincere_ask_draft: bool = True
+
+    @model_validator(mode="after")
+    def _literal_sections_exist(self) -> VoiceText:
+        unknown = set(self.literal) - set(self.instruction)
+        if unknown:
+            raise ValueError(f"voice.literal names unknown sections: {sorted(unknown)}")
+        return self
 
 
 class Pack(_Strict):

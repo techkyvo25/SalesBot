@@ -90,8 +90,10 @@ demo: demo-seed
 	@echo "Demo page: http://127.0.0.1:8000/demo  (localhost only; Ctrl+C to stop)"
 	DEMO_MODE=true uv run --package salesbot-api uvicorn salesbot_api.main:app --host 127.0.0.1 --port 8000
 
+# LITERAL=1: the clinic's name, phone and emergency numbers written in, no {{variables}}
+# (CLINIC=path/to/clinic.yaml, default: the demo clinic).
 voice-agent:
-	uv run python -m salesbot_core.packs.render_agent --pack $(or $(PACK),clinic)
+	uv run python -m salesbot_core.packs.render_agent --pack $(or $(PACK),clinic) 	  $(if $(LITERAL),--literal --clinic-file $(or $(CLINIC),apps/api/src/salesbot_api/demo/clinic.yaml))
 
 voice-ops:
 	uv run --package salesbot-api python -m salesbot_api.tools.voice_ops $(ARGS)
