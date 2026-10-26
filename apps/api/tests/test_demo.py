@@ -215,7 +215,10 @@ def test_booking_goes_through_the_database(demo, conn):
 @pytest.mark.db
 def test_a_slot_taken_in_the_database_is_refused(demo, conn):
     register(demo)
-    day = first(chat(demo, "book"), "day:")
+    # Tomorrow, not today: late in the day today may have one time left, and once it is taken
+    # the reply is "day full" instead of "slot taken".
+    days = [o["id"] for m in chat(demo, "book")["messages"] for o in m["options"]]
+    day = [d for d in days if d.startswith("day:")][1]
     times = chat(demo, choice=day)
     slot = first(times, "time:")
     taken = demo.post(
