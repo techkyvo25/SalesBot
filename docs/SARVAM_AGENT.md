@@ -5,7 +5,7 @@ here is automated). The pack is the source of truth: the instruction, greetings,
 lines, knowledge-base text and tool cURLs at the end are **generated** by
 `make voice-agent PACK=clinic` (a test fails if this file falls behind the pack).
 
-Field names and limits come from docs.sarvam.ai (read 23 Oct 2026). Where the docs are silent,
+Field names and limits come from docs.sarvam.ai (read 23 Oct 2026, labels rechecked 26 Oct 2026). Where the docs are silent,
 this file says so instead of guessing.
 
 > **Costs.** Building and editing the agent is free. **Test calls, simulated test runs (₹2 each)
@@ -23,24 +23,28 @@ this file says so instead of guessing.
 | Agent id | Agent's ··· menu -> Copy agent ID (after step 2) | `.env`: `SARVAM_APP_ID` |
 | Agent version | The committed version number (after step 8) | `.env`: `SARVAM_APP_VERSION` |
 | Connection id, agent number | Deploy -> Phone Numbers (after renting, needs KYC: **owner's go**) | `.env`: `SARVAM_CONNECTION_ID`, `SARVAM_AGENT_PHONE_NUMBER` |
-| Tool secret | Already generated into `.env` (`VOICE_TOOL_SECRET`) | Sarvam Settings -> Secrets |
+| Tool secret | Already generated into `.env` (`VOICE_TOOL_SECRET`) | Each tool's and hook's **Auth -> bearer token** masked input (Sarvam keeps it under Settings -> Secrets) |
 | Webhook path token | Already generated into `.env` (`VOICE_WEBHOOK_SECRET`) | Deployment webhook URL |
-| Public API URL | The tunnel or container host URL | `.env`: `PUBLIC_BASE_URL`; tool URLs |
+| Public API URL | `make voice-tunnel` writes every URL to `.local/voice-urls.txt` (new address on every start), later the container host | Tool and hook URLs; `.env`: `PUBLIC_BASE_URL` only for outbound calls |
 
 The API must be reachable over HTTPS from Sarvam (tool calls are mid-call; keep them under 2 s).
 
 ## 2. Create the agent
 
-- Build -> new agent, **single-state** (do not convert to multi-state: it is one-way).
-- **Instruction** and **Greeting**: paste from the generated block below.
-- **Model temperature: 0.3** (default; "Compliant" end).
-- **Voice:** Bulbul **V4** (V3 reaches end of life on 10 Nov 2026). Turn on per-language voices
-  if you want a different voice per starting language.
-- **Background sound: No sound.** Ambient "office" or "call center" noise is a fake human cue,
-  which the wording rule forbids.
-- **Advanced -> Protect sensitive info: on** (masks phone numbers in Sarvam's logs).
+- Build -> **Agents** -> **Create from Scratch** (not the Genie prompt box). You land on the
+  **Canvas**. Keep it **single-state**: never use Settings -> Advanced -> **Convert to
+  multi-state** (one-way).
+- **Instruction** tab: paste the **Greeting** and the instruction from the generated block below.
+- Settings -> **Model temperature: 0.3** (slider from Compliant to Creative).
+- Settings -> Speaking: **Model: Bulbul V4** (V3 reaches end of life on 10 Nov 2026). Turn on
+  **Per-language voices** if you want a different voice per starting language.
+- Settings -> Environment -> **Background sound: No sound.** Ambient "Quiet office" or "Call
+  center" noise is a fake human cue, which the wording rule forbids.
+- Settings -> Advanced -> **Protect sensitive info: on** (masks phone numbers in Sarvam's logs).
 
 ## 3. Language
+
+Settings -> **Language personalisation**:
 
 - **Languages allowed:** English and Hindi; add Marathi only for clinics that offer it
   (`businesses.allowed_languages`).
@@ -86,7 +90,9 @@ Mark `patient_name`, `patient_id` and `upcoming_appointment` as **PII** (Sarvam'
 ## 5. Hooks
 
 Create two API tools with **When should this tool run?** set to `on_start` and `on_end`. Auth:
-**bearer token**, from the secret holding `VOICE_TOOL_SECRET`.
+**bearer token**: type `VOICE_TOOL_SECRET`'s value into the masked input (Sarvam stores it as a
+workspace secret; it never appears in the tool). Hooks cannot use a response template; map the
+fields instead.
 
 **On-start** `POST {PUBLIC_BASE_URL}/api/v1/voice/hooks/on-start`
 
@@ -120,7 +126,7 @@ For each tool in the generated block: Create tool -> paste the cURL -> then:
 
 - Replace each `"@name"` value with the matching variable using `@` in the editor
   (`@Interaction ID`, `@User Identifier` and `@language_name` are built in).
-- **Auth:** bearer token from Secrets (never paste the secret into the tool).
+- **Auth:** bearer token, entered once in the masked input (never in a header or the body).
 - **Max wait:** 5 s (Sarvam allows up to 30 s; ours answer in well under 2 s).
 - **If it fails** (timeout or non-2xx), per language:
   en "Sorry, I couldn't do that just now. I'll ask the clinic team to call you back."
@@ -143,19 +149,46 @@ Retries are safe: our tools are idempotent per (interaction id, tool, request bo
 
 - **Max call length: 10 minutes** (matches `CALL_MAX_SECONDS=600`; the spend guard reserves
   ₹39 per outbound call on that basis).
-- **Let callers interrupt: on.** Eagerness: Normal.
+- **Let callers interrupt: on.** **Eagerness to respond: Normal.**
 - **Nudge quiet callers:** one nudge after 8 s. Its text must follow the wording rule and come
   from the pack when added; until then leave nudges off.
 - **Hang up after unanswered nudges: on.**
 - **Voicemail: off** (outbound calls are off).
-- **Call transfer: off.** The human-handoff mechanism is an open decision; the agent creates a
-  staff task instead.
-- **Knowledge base:** none for the clinic pack (no FAQs yet). When FAQs are added to the pack,
-  create a KB from the generated "Knowledge base text".
+- **Call transfer** (Settings -> In Call Actions): **off.** The human-handoff mechanism is an
+  open decision; the agent creates a staff task instead.
+- **Knowledge base:** create one from the generated "Knowledge base text" below. It holds only
+  the pack's fixed-text FAQs; opening hours come from the database and the demo-only answers
+  (address, parking, fee, insurance) are left out on purpose.
 
 ## 8. Commit the agent version
 
 Commit, note the version number in `.env` (`SARVAM_APP_VERSION`).
+
+## 8a. Browser test, before any number (test agent)
+
+Sarvam's **test agent** panel talks to the agent in the browser (Voice: your microphone; Chat:
+text; Phone: only for whitelisted numbers). It needs no number, but our tools must be reachable:
+
+1. `make demo-reset`, then `make voice-test-patient` (adds "Voice Test Patient (fake)" to the
+   demo clinic with a fixed `patient_id`; `make voice-test-patient-remove` deletes it).
+2. `make voice-tunnel`; paste the URLs from `.local/voice-urls.txt` into the two hooks and the
+   eight tools (they change on every start). `make voice-tunnel-check` must show 200 / 401 / 200.
+3. Commit the agent version (step 8).
+4. **test agent -> Setup**: pick the language and speaker, then override the agent variables:
+   `clinic_slug` = `anvia-demo-clinic`, `patient_id` = `7e570000-0000-4000-8000-000000000001`.
+   **Start Call**.
+
+Why `patient_id`: the caller's number (**User Identifier**) is filled only on inbound phone
+calls, and Sarvam's docs do not say a browser session can set it. With `patient_id` set and no
+caller number, our hooks and tools use that patient, the same path as our own outbound calls.
+
+- Watch our side with `make voice-tools-log` (endpoint, status, duration per request).
+- **Cost:** Sarvam's pricing page does not say whether a browser test session is billed. Assume
+  the agent rate (₹3.50 per minute) and ask the owner first.
+- Sarvam's **Mock API tool** (Postman Echo) is not needed: our real API answers through the tunnel.
+- Leave `VOICE_IP_ALLOWLIST` empty behind a quick tunnel: every request reaches the API from
+  cloudflared on 127.0.0.1, so an allowlist of Sarvam's addresses would refuse them all.
+- `make voice-tunnel-stop` when done.
 
 ## 9. Inbound deployment (needs a number: owner's go for renting and KYC)
 
