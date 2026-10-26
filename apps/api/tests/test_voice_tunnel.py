@@ -187,6 +187,7 @@ def test_voice_test_patient_is_idempotent_and_removable(db_url, conn):
         assert not seed.remove_voice_test_patient(conn, settings)
     finally:
         seed.reset(conn, settings)
+        seed.seed(conn, settings, datetime.now(UTC))
 
 
 def test_voice_test_patient_id_is_fixed():
