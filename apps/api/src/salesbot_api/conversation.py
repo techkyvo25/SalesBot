@@ -17,7 +17,7 @@ from uuid import UUID
 import psycopg
 
 from salesbot_api import booking
-from salesbot_api.records import Actor, record_event
+from salesbot_api.records import Actor, record_audit, record_event
 from salesbot_api.voice import store
 from salesbot_core.events import Channel, EventType, FunnelEvent, LeadSource
 from salesbot_core.flow import ConversationState, FlowContext, FlowEngine, Inbound, Turn
@@ -31,6 +31,7 @@ from salesbot_core.scheduling import (
     Scope,
     Slot,
     VisitType,
+    WeeklyWindow,
 )
 
 Row = dict
@@ -174,6 +175,27 @@ class DbScheduling:
             self._names[key] = names.get(practitioner_id, "")
         return self._names[key]
 
+    def weekly_hours(self) -> list[tuple[UUID, list[WeeklyWindow]]]:
+        rows = self.conn.execute(
+            """
+            select p.id, h.weekday, h.start_time, h.end_time
+            from public.practitioners p
+            left join public.practitioner_hours h
+              on h.practitioner_id = p.id and h.business_id = p.business_id and h.kind = 'work'
+            where p.business_id = %s and p.is_active
+            order by p.created_at, p.id, h.weekday, h.start_time
+            """,
+            (self.business_id,),
+        ).fetchall()
+        hours: dict[UUID, list[WeeklyWindow]] = {}
+        for r in rows:
+            windows = hours.setdefault(r["id"], [])
+            if r["weekday"] is not None:
+                windows.append(
+                    WeeklyWindow(weekday=r["weekday"], start=r["start_time"], end=r["end_time"])
+                )
+        return list(hours.items())
+
     def _own(self, appointment_id: UUID) -> None:
         if self.get(appointment_id) is None:
             raise NotActive("appointment not found")
@@ -198,7 +220,12 @@ _WRITTEN_WITH_TASK = {EventType.HANDOFF_TASK_CREATED, EventType.EMERGENCY_DETECT
 @dataclass
 class Conversation:
     """One client's text conversation with a clinic, on the database. The caller keeps
-    `state` between messages (the demo keeps it in memory; Stage C stores it)."""
+    `state` between messages (the demo keeps it in memory; Stage C stores it).
+
+    Every method returns the turn only after its records are written, so a reply never goes
+    out unless what it says is saved (an opt-out above all). Messages we start (welcome,
+    confirmation request, reminder) are not sent to a client who opted out.
+    """
 
     engine: FlowEngine
     port: DbScheduling
@@ -211,26 +238,47 @@ class Conversation:
         return turn
 
     def welcome(self, now: datetime) -> Turn:
+        if not self.may_message():
+            return Turn(state=self.state)
         turn = self.engine.welcome(self.state, now)
         self.record(turn, now)
         return turn
 
     def confirmation_request(self, appointment_id: UUID, now: datetime) -> Turn:
+        if not self.may_message():
+            return Turn(state=self.state)
         turn = self.engine.confirmation_request(self.state, appointment_id, now)
         self.record(turn, now)
         return turn
 
     def reminder(self, appointment_id: UUID, now: datetime) -> Turn:
+        if not self.may_message():
+            return Turn(state=self.state)
         turn = self.engine.reminder(self.state, appointment_id, now)
         self.record(turn, now)
         return turn
 
+    def may_message(self) -> bool:
+        """The client agreed to messages and has not asked us to stop."""
+        row = self.port.conn.execute(
+            "select whatsapp_opt_in from public.clients where business_id = %s and id = %s",
+            (self.port.business_id, self.port.client_id),
+        ).fetchone()
+        return bool(row and row["whatsapp_opt_in"])
+
     def record(self, turn: Turn, now: datetime) -> None:
-        """Write the turn's staff tasks and conversation events, then keep its state.
-        Booking events were already written by the booking engine."""
+        """Write the turn's opt-out, staff tasks and conversation events in one transaction,
+        then keep its state. Booking events were already written by the booking engine."""
+        conn = self.port.conn
+        with conn.transaction():
+            self._record(turn, now)
         self.state = turn.state
+
+    def _record(self, turn: Turn, now: datetime) -> None:
         conn, business_id = self.port.conn, self.port.business_id
         actor = self.port.actor = replace(self.port.actor, language=turn.state.language)
+        if turn.opt_out:
+            self._opt_out(actor, now, turn.inbound_language)
         for task in turn.tasks:
             store.create_staff_task(
                 conn,
@@ -260,6 +308,39 @@ class Conversation:
                 ),
             )
 
+    def _opt_out(self, actor: Actor, now: datetime, language: str | None) -> None:
+        """Stop all messages to this client: saved before the reply that says so."""
+        conn, business_id, client_id = self.port.conn, self.port.business_id, self.port.client_id
+        updated = conn.execute(
+            "update public.clients set whatsapp_opt_in = false "
+            "where business_id = %s and id = %s returning id",
+            (business_id, client_id),
+        ).fetchone()
+        if updated is None:
+            raise RuntimeError("opt-out not saved: client not found")
+        record_event(
+            conn,
+            FunnelEvent(
+                business_id=business_id,
+                type=EventType.CONSENT_DECLINED,
+                occurred_at=now,
+                client_id=client_id,
+                channel=actor.channel,
+                language=language,
+                source=self.source,
+                properties={"scope": "messages", "reason": "patient asked to stop"},
+            ),
+        )
+        record_audit(
+            conn,
+            business_id=business_id,
+            entity_type="client",
+            entity_id=client_id,
+            action="opted_out",
+            actor=actor,
+            changes={"whatsapp_opt_in": [True, False]},
+        )
+
 
 def open_conversation(
     conn: psycopg.Connection,
@@ -268,6 +349,7 @@ def open_conversation(
     *,
     channel: Channel = Channel.API,
     language: Language | None = None,
+    demo: bool = False,
 ) -> Conversation:
     """Engine and port for one client. Raises ValueError if the clinic has no contact phone
     (every emergency reply gives it)."""
@@ -286,6 +368,7 @@ def open_conversation(
             client_name=client["name"],
             default_language=business.default_language,
             values={"clinic_phone": business.contact_phone or ""},
+            demo=demo,
         ),
     )
     return Conversation(engine=engine, port=port, state=engine.new_state(lang))
