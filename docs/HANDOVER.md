@@ -10,6 +10,8 @@ business rules live in our API and Postgres. Background: [README](../README.md),
 
 ## 2. Where the code is
 
+Repository: https://github.com/techkyvo25/SalesBot (moved from a personal account on 26 Oct 2026).
+
 Three branches. Each one contains everything in the one above it:
 
 | Branch | Commit | What it holds |
