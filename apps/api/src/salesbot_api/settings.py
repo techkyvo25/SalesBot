@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     app_env: Literal["local", "staging", "production"] = "local"
     secret_key: SecretStr | None = None
     log_level: str = "INFO"
+    # Local demo only (docs/DEMO.md): mounts the unauthenticated /demo routes and allows
+    # `make demo-reset`. Never on with a tunnel or on a shared host.
+    demo_mode: bool = False
 
     # Supabase. The service role key bypasses RLS: server-side only.
     supabase_url: str | None = None
