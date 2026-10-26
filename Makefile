@@ -3,7 +3,7 @@
 
 ADMIN := apps/admin
 
-.PHONY: help setup dev-api dev-admin require-docker db-up db-down db-reset migrate test lint format load-clinic simulate-intake console demo demo-seed demo-reset voice-agent voice-ops
+.PHONY: help setup dev-api dev-admin require-docker db-up db-down db-reset migrate test lint format load-clinic simulate-intake console demo demo-seed demo-reset voice-agent voice-ops voice-tunnel voice-tunnel-stop voice-tunnel-check voice-tools-log voice-test-patient voice-test-patient-remove
 
 help:
 	@echo "setup      install Python (uv) + admin (npm) deps and git hooks"
@@ -24,6 +24,10 @@ help:
 	@echo "demo-seed / demo-reset         seed / rebuild the FAKE demo clinic only"
 	@echo "voice-agent PACK=clinic        print the Sarvam agent setup rendered from a pack"
 	@echo "voice-ops ARGS='spend'         spend caps, test-run guard, outbound dry run, cost actuals"
+	@echo "voice-tunnel / voice-tunnel-stop  API + Cloudflare quick tunnel for the first voice test"
+	@echo "voice-tunnel-check             /health, tool without token (401), with token (200)"
+	@echo "voice-tools-log                last 20 voice requests (endpoint, status, duration)"
+	@echo "voice-test-patient[-remove]    fake patient for Sarvam's browser test (demo clinic)"
 
 setup:
 	uv sync --all-packages
@@ -91,3 +95,22 @@ voice-agent:
 
 voice-ops:
 	uv run --package salesbot-api python -m salesbot_api.tools.voice_ops $(ARGS)
+
+# First voice test (docs/SARVAM_AGENT.md, browser test). The tunnel refuses DEMO_MODE=true.
+voice-tunnel:
+	uv run --package salesbot-api python -m salesbot_api.tools.voice_tunnel start
+
+voice-tunnel-stop:
+	uv run --package salesbot-api python -m salesbot_api.tools.voice_tunnel stop
+
+voice-tunnel-check:
+	uv run --package salesbot-api python -m salesbot_api.tools.voice_tunnel check
+
+voice-tools-log:
+	@tail -n 20 .local/voice-tools.log 2>/dev/null || echo "no voice requests logged yet"
+
+voice-test-patient:
+	DEMO_MODE=true uv run --package salesbot-api python -m salesbot_api.demo.seed voice-patient
+
+voice-test-patient-remove:
+	DEMO_MODE=true uv run --package salesbot-api python -m salesbot_api.demo.seed voice-patient-remove

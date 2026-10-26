@@ -13,6 +13,9 @@ token*.json
 service-account*.json
 google-*.json
 
+# Local-only files: tunnel URLs (carry a secret token), voice logs, pids
+.local/
+
 # ---- Python ----
 __pycache__/
 *.py[cod]

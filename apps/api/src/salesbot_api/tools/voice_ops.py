@@ -5,6 +5,7 @@
     uv run --package salesbot-api python -m salesbot_api.tools.voice_ops outbound \\
         --clinic demo --appointment <uuid> --purpose confirmation_call
     uv run --package salesbot-api python -m salesbot_api.tools.voice_ops actuals
+    uv run --package salesbot-api python -m salesbot_api.tools.voice_ops key-check
 
 - spend      today's and this session's spend against the caps.
 - test-runs  reserve N simulated test runs (Rs 2 each) against the caps BEFORE you start them
@@ -13,6 +14,8 @@
 - outbound   request an outbound call. A dry run unless outbound calls are enabled (they are
              not: docs/DECISIONS.md). Prints why a call is blocked.
 - actuals    the "Actuals" table for docs/COSTS.md, from stored calls.
+- key-check  read-only check of SARVAM_VOICE_API_KEY, SARVAM_ORG_ID and SARVAM_WORKSPACE_ID:
+             lists the workspace's deployments (not billed). Prints the status and a count only.
 
 Never prints secrets or patient details (phone numbers are masked).
 """
@@ -23,10 +26,13 @@ import argparse
 import sys
 from datetime import UTC, datetime
 from decimal import Decimal
+from urllib.parse import quote
+
+import httpx
 
 from salesbot_api import db
 from salesbot_api.settings import Settings
-from salesbot_api.voice import outbound, spend, store
+from salesbot_api.voice import outbound, sarvam, spend, store
 from salesbot_core.costs import SpendCapReachedError, SpendKind, load_rates
 
 
@@ -120,6 +126,44 @@ def _actuals(settings: Settings) -> None:
         print("| (no calls yet) | | | | | | | |")
 
 
+def _key_check(settings: Settings) -> int:
+    """GET .../deployments?limit=1 with the Voice Agents key. Read-only, never prints the key."""
+    missing = [
+        name
+        for name, value in (
+            ("SARVAM_VOICE_API_KEY", settings.sarvam_voice_api_key),
+            ("SARVAM_ORG_ID", settings.sarvam_org_id),
+            ("SARVAM_WORKSPACE_ID", settings.sarvam_workspace_id),
+        )
+        if not value
+    ]
+    if missing:
+        print(f"missing in .env: {', '.join(missing)}", file=sys.stderr)
+        return 2
+    key = settings.sarvam_voice_api_key
+    if key is None:
+        return 2
+    url = (
+        f"{sarvam.BASE}/app-authoring/v1/orgs/{quote(settings.sarvam_org_id or '')}"
+        f"/workspaces/{quote(settings.sarvam_workspace_id or '')}/deployments"
+    )
+    try:
+        r = httpx.get(
+            url,
+            params={"limit": 1},
+            headers={"X-API-Key": key.get_secret_value()},
+            timeout=sarvam.TIMEOUT,
+        )
+    except httpx.HTTPError as exc:
+        print(f"key check failed: {type(exc).__name__}", file=sys.stderr)
+        return 1
+    if r.status_code != 200:
+        print(f"key check: HTTP {r.status_code} (401/403 = wrong key, 404/422 = wrong ids)")
+        return 1
+    print(f"key check: HTTP 200, deployments in the workspace: {r.json().get('total', '?')}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -133,6 +177,7 @@ def main(argv: list[str] | None = None) -> int:
         "--purpose", choices=["confirmation_call", "reminder_call"], default="confirmation_call"
     )
     sub.add_parser("actuals")
+    sub.add_parser("key-check")
     args = parser.parse_args(argv)
     settings = Settings()
     if args.command == "spend":
@@ -141,6 +186,8 @@ def main(argv: list[str] | None = None) -> int:
         return _test_runs(settings, args.count)
     elif args.command == "outbound":
         return _outbound(settings, args.clinic, args.appointment, args.purpose)
+    elif args.command == "key-check":
+        return _key_check(settings)
     else:
         _actuals(settings)
     return 0
