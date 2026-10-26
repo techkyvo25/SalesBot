@@ -1,10 +1,15 @@
-"""Text console: chat with the appointment flow as a patient, in the terminal. No database,
-no WhatsApp, no network. The clinic comes from a clinic YAML (same format as load_clinic).
+"""Text console: chat with the appointment flow as a patient, in the terminal. No WhatsApp,
+no network calls.
+
+Without --db there is no database: the clinic comes from a clinic YAML (same format as
+load_clinic) and bookings live in memory. With --db the chat runs against SUPABASE_DB_URL's
+demo clinic (`make demo-seed`) through the real booking engine; nothing is kept in memory but
+the conversation state.
 
     make console
     uv run --package salesbot-api python -m salesbot_api.tools.console --lang mr
-    uv run --package salesbot-api python -m salesbot_api.tools.console --demo
     uv run --package salesbot-api python -m salesbot_api.tools.console --list-drafts
+    uv run --package salesbot-api python -m salesbot_api.tools.console --db --patient demo-meera
 
 Type a reply, or a number to pick an option. Commands:
     /wait <minutes>   move the clock (holds expire after the clinic's hold time)
@@ -21,6 +26,8 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Callable
+from contextlib import ExitStack
 from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -28,7 +35,12 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
+from salesbot_api import db
+from salesbot_api.conversation import Conversation, open_conversation
+from salesbot_api.demo.seed import RefusedError, check_safe
+from salesbot_api.settings import Settings
 from salesbot_api.tools.load_clinic import DAYS, ClinicIn, parse_ranges
+from salesbot_api.voice import store
 from salesbot_core.flow import ConversationState, FlowContext, FlowEngine, Inbound, Turn
 from salesbot_core.flow.drafts import draft_texts, ensure_sendable
 from salesbot_core.flow.memory import InMemoryScheduling
@@ -43,20 +55,6 @@ from salesbot_core.scheduling import (
 
 REPO = Path(__file__).resolve().parents[5]
 DEFAULT_CLINIC = REPO / "docs" / "examples" / "clinic.example.yaml"
-DEMO_LINES = [
-    "/welcome",
-    "1",
-    "kal sakali 11 baje",
-    "हो",
-    "/confirm",
-    "are you a bot?",
-    "1",
-    "reschedule",
-    "next monday evening",
-    "1",
-    "yes",
-    "thank you",
-]
 
 
 def build_scheduling(clinic: ClinicIn) -> InMemoryScheduling:
@@ -109,11 +107,27 @@ def build_scheduling(clinic: ClinicIn) -> InMemoryScheduling:
 
 
 class Console:
-    def __init__(self, clinic: ClinicIn, language: str, patient: str, now: datetime) -> None:
-        self.port = build_scheduling(clinic)
-        self.engine = FlowEngine(
+    def __init__(
+        self,
+        engine: FlowEngine,
+        state: ConversationState,
+        now: datetime,
+        record: Callable[[Turn, datetime], None] | None = None,
+    ) -> None:
+        self.engine = engine
+        # InMemoryScheduling or DbScheduling: both keep a `log` of what happened.
+        self.port = engine.port
+        self.state = state
+        self.now = now
+        # Writes the turn's events and staff tasks (database mode).
+        self.record = record
+        self._log_seen = 0
+
+    @classmethod
+    def in_memory(cls, clinic: ClinicIn, language: str, patient: str, now: datetime) -> Console:
+        engine = FlowEngine(
             load_pack_by_id(clinic.pack),
-            self.port,
+            build_scheduling(clinic),
             FlowContext(
                 business_name=clinic.name,
                 client_name=patient,
@@ -121,19 +135,24 @@ class Console:
                 values={"clinic_phone": clinic.contact_phone},
             ),
         )
-        self.state: ConversationState = self.engine.new_state(language)  # type: ignore[arg-type]
-        self.now = now
-        self._log_seen = 0
+        return cls(engine, engine.new_state(language), now)  # type: ignore[arg-type]
+
+    @classmethod
+    def on_database(cls, conversation: Conversation, now: datetime) -> Console:
+        return cls(conversation.engine, conversation.state, now, conversation.record)
 
     def show(self, turn: Turn) -> None:
+        if self.record is not None:
+            self.record(turn, self.now)
         self.state = turn.state
         for reply in ensure_sendable(turn.replies, live=False):
             tag = " [DRAFT]" if reply.draft else ""
             print(f"\nCLINIC ({reply.language}){tag}:\n{plain_text(reply)}")
         notes = [e.type.value for e in turn.events]
         notes += [f"TASK {t.kind}{' (urgent)' if t.urgent else ''}" for t in turn.tasks]
-        notes += self.port.log[self._log_seen :]
-        self._log_seen = len(self.port.log)
+        log = self.port.log  # type: ignore[attr-defined]
+        notes += log[self._log_seen :]
+        self._log_seen = len(log)
         if turn.opt_out:
             notes.append("OPT-OUT")
         if notes:
@@ -182,8 +201,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lang", default="en", choices=["en", "hi", "mr"])
     parser.add_argument("--name", default="Test Patient", help="patient name (use a fake one)")
     parser.add_argument("--now", help="start time, ISO 8601 with timezone (default: now)")
-    parser.add_argument("--demo", action="store_true", help="run a scripted conversation")
     parser.add_argument("--list-drafts", action="store_true", help="print DRAFT text for review")
+    parser.add_argument(
+        "--db", action="store_true", help="chat against SUPABASE_DB_URL's demo clinic"
+    )
+    parser.add_argument("--slug", default="anvia-demo-clinic", help="with --db: the clinic's slug")
+    parser.add_argument(
+        "--patient",
+        default="demo-ravi",
+        help="with --db: the patient's external id (see salesbot_api.demo.seed)",
+    )
     args = parser.parse_args(argv)
 
     clinic = ClinicIn.model_validate(yaml.safe_load(args.clinic.read_text(encoding="utf-8")))
@@ -195,22 +222,41 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.fromisoformat(args.now) if args.now else datetime.now(UTC)
     if now.tzinfo is None:
         parser.error("--now needs a timezone, e.g. 2026-10-21T10:00:00+05:30")
-    console = Console(clinic, args.lang, args.name, now)
-    print(
-        f"{clinic.name}: type a reply, a number for an option, or /help. "
-        f"Clock: {now:%Y-%m-%d %H:%M %Z}"
-    )
-
-    lines = iter(DEMO_LINES) if args.demo else None
-    while True:
-        if lines is not None:
-            line = next(lines, "/quit")
-            print(f"\nPATIENT: {line}")
-        else:
+    with ExitStack() as stack:
+        if args.db:
+            settings = Settings()
+            conn = stack.enter_context(db.connect(settings, autocommit=True))
             try:
-                line = input("\nPATIENT: ").strip()
-            except EOFError:
-                return 0
+                check_safe(conn, settings)
+            except RefusedError as exc:
+                parser.error(f"refused: {exc}")
+            business = store.business_by_slug(conn, args.slug)
+            if business is None:
+                parser.error(f"no clinic {args.slug!r} in the database (run `make demo-seed`)")
+            client = conn.execute(
+                "select * from public.clients where business_id = %s and external_id = %s",
+                (business.id, args.patient),
+            ).fetchone()
+            if client is None:
+                parser.error(f"no patient {args.patient!r} at {args.slug!r}")
+            console = Console.on_database(open_conversation(conn, business, client), now)
+            title = f"{business.name} (database)"
+        else:
+            console = Console.in_memory(clinic, args.lang, args.name, now)
+            title = clinic.name
+        print(
+            f"{title}: type a reply, a number for an option, or /help. "
+            f"Clock: {now:%Y-%m-%d %H:%M %Z}"
+        )
+        return _loop(console)
+
+
+def _loop(console: Console) -> int:
+    while True:
+        try:
+            line = input("\nPATIENT: ").strip()
+        except EOFError:
+            return 0
         if not line:
             continue
         if line.startswith("/"):
