@@ -1,5 +1,8 @@
 # SalesBot
 
+> **New here? Start with [docs/HANDOVER.md](docs/HANDOVER.md)**: where the code is (start from
+> `demo/smallest-demo`), what works, what is simulated, and the next steps.
+
 An inbound AI voice receptionist for small businesses. It answers calls in **Hindi, Marathi or
 English**, books appointments, captures every lead, and shows the owner what happened.
 
@@ -116,10 +119,5 @@ docs/             ARCHITECTURE, GTM, DECISIONS, PROVIDERS, COSTS, SARVAM_AGENT, 
 
 ## Status and roadmap
 
-**Now (Anvia Phase 1, Stage B):** flow engine and text console; Sarvam Voice Agents integration
-(API tools, hooks, webhooks, cost tracking, spend guard); outbound calls built but **off** (dry
-run). Nothing calls Sarvam unless its settings are filled in, and nothing spends credits without
-the owner's go.
-
-Next: WhatsApp (Stage C) against a mock client, then the hosted dev database, then the first
-voice test on the owner's team's phones.
+**Now:** see [docs/STATUS.md](docs/STATUS.md) and [docs/HANDOVER.md](docs/HANDOVER.md). Outbound calls
+are built but **off** (dry run); nothing calls Sarvam or spends credits without the owner's go.
