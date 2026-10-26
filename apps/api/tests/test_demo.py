@@ -172,6 +172,7 @@ def first(data, prefix):
     return next(o for o in options if o.startswith(prefix))
 
 
+@pytest.mark.db
 def test_seed_and_funnel_counts(demo):
     assert demo.get("/demo/api/funnel").json() == {
         "registered": 2,
@@ -189,6 +190,7 @@ def test_seed_and_funnel_counts(demo):
     assert not again["created"] and again["messages"] == []
 
 
+@pytest.mark.db
 def test_booking_goes_through_the_database(demo, conn):
     register(demo)
     day = first(chat(demo, "book"), "day:")
@@ -210,6 +212,7 @@ def test_booking_goes_through_the_database(demo, conn):
     assert demo.get("/demo/api/funnel").json()["cancelled"] == 1
 
 
+@pytest.mark.db
 def test_a_slot_taken_in_the_database_is_refused(demo, conn):
     register(demo)
     day = first(chat(demo, "book"), "day:")
@@ -231,6 +234,7 @@ def test_a_slot_taken_in_the_database_is_refused(demo, conn):
     assert asha == 0
 
 
+@pytest.mark.db
 def test_emergency_reply_has_the_numbers_only_fallback(demo):
     register(demo)
     data = chat(demo, "I have chest pain and can't breathe")
@@ -243,12 +247,14 @@ def test_emergency_reply_has_the_numbers_only_fallback(demo):
     assert tasks[0]["urgent"] and tasks[0]["kind"] == "emergency"
 
 
+@pytest.mark.db
 def test_hindi_replies_are_draft(demo):
     data = chat(demo, "namaste", patient="demo-ravi")
     assert data["messages"][0]["language"] == "hi"
     assert all(m["draft"] for m in data["messages"])
 
 
+@pytest.mark.db
 def test_opening_hours_come_from_the_database(demo):
     register(demo)
     text = chat(demo, "what are your opening hours")["messages"][0]["text"]
@@ -256,6 +262,7 @@ def test_opening_hours_come_from_the_database(demo):
     assert demo.get("/demo/api/tasks").json() == []
 
 
+@pytest.mark.db
 def test_opt_out_is_saved_before_the_reply(demo, conn):
     register(demo)
     data = chat(demo, "stop")
@@ -277,6 +284,7 @@ def test_opt_out_is_saved_before_the_reply(demo, conn):
     assert conv.welcome(datetime.now(UTC)).replies == []
 
 
+@pytest.mark.db
 def test_no_reply_when_the_opt_out_cannot_be_saved(demo, conn, monkeypatch):
     register(demo)
     business = store.business_by_slug(conn, seed.demo_clinic().slug)
@@ -297,6 +305,7 @@ def test_no_reply_when_the_opt_out_cannot_be_saved(demo, conn, monkeypatch):
     ).fetchone()["whatsapp_opt_in"]
 
 
+@pytest.mark.db
 def test_reset_touches_only_the_demo_clinic(demo, conn):
     other = uuid.uuid4()
     conn.execute(
