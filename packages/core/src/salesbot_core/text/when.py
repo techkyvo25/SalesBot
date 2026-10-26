@@ -278,6 +278,11 @@ def _parse_time(
     def valid(h: int, m: int) -> bool:
         return 0 <= h <= 23 and 0 <= m <= 59
 
+    # Two different hours ("he finishes at 4, so after 6"): guessing one could hold a time the
+    # patient ruled out. Ask instead.
+    if len({int(t) for t in toks if t.isdigit() and 1 <= int(t) <= 23}) > 1:
+        return None
+
     m = _CLOCK.search(text)
     if m and valid(int(m.group(1)), int(m.group(2))):
         return ClockTime(int(m.group(1)), int(m.group(2)), _meridiem(m.group(3)), part)

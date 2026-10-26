@@ -94,6 +94,7 @@ def make_chat() -> ChatFactory:
         port: InMemoryScheduling | None = None,
         default_language: str = "en",
         paused: bool = False,
+        demo: bool = False,
     ) -> Chat:
         port = port or InMemoryScheduling(
             # Test clinics offer all three languages unless a test passes its own settings.
@@ -110,6 +111,7 @@ def make_chat() -> ChatFactory:
                 default_language=default_language,  # type: ignore[arg-type]
                 values={"clinic_phone": "+910000000000"},
                 automation_paused=paused,
+                demo=demo,
             ),
         )
         return Chat(engine, port, language)

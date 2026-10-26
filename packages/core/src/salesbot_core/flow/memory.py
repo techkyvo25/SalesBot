@@ -26,6 +26,7 @@ from salesbot_core.scheduling import (
     Scope,
     Slot,
     VisitType,
+    WeeklyWindow,
     days_with_openings,
     distinct_times,
     next_opening,
@@ -246,6 +247,9 @@ class InMemoryScheduling:
     def practitioner_name(self, practitioner_id: UUID, language: Language) -> str:
         names = self.names.get(practitioner_id, {})
         return names.get(language) or names.get("en") or next(iter(names.values()), "")
+
+    def weekly_hours(self) -> list[tuple[UUID, list[WeeklyWindow]]]:
+        return [(c.practitioner_id, list(c.work)) for c in self.calendars]
 
     # -- setup helpers (console, tests) -------------------------------------
 

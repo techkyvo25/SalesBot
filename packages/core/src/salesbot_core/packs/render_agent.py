@@ -114,7 +114,12 @@ def render(pack: Pack, *, api_base: str = DEFAULT_API_BASE) -> RenderedAgent:
     sections = [
         f"## {title}\n{body.format(**values)}" for title, body in pack.voice.instruction.items()
     ]
-    faqs = [f"Q: {faq.question['en']}\nA: {faq.answer['en'].format(**_VARS)}" for faq in pack.faqs]
+    # Fixed text only: demo FAQs are fictional, and opening hours come from the database.
+    faqs = [
+        f"Q: {faq.question['en']}\nA: {faq.answer['en'].format(**_VARS)}"
+        for faq in pack.faqs
+        if faq.source == "text" and not faq.demo
+    ]
     draft = [f"{SARVAM_LANGUAGE_NAMES[lang]} text" for lang in pack.draft_languages]
     if pack.voice.sincere_ask_draft:
         draft.append("sincere-ask answer")

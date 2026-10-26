@@ -74,6 +74,7 @@ class Step(StrEnum):
     OFFER_EARLIEST = "offer_earliest"  # nothing in the lookahead window; offered the first opening
     CONFIRM_CANCEL = "confirm_cancel"
     CONFIRM_APPOINTMENT = "confirm_appointment"  # after a confirmation request or reminder
+    CONFIRM_SECOND = "confirm_second"  # has an appointment; asked "book another as well?"
 
 
 class Purpose(StrEnum):

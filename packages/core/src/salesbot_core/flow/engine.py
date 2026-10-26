@@ -13,6 +13,11 @@ Rules that hold for every turn:
   carries the clinic phone and emergency numbers, and has a numbers-only fallback for live
   channels while the wording is DRAFT.
 - A request for a person, a sincere "are you a bot?" and "stop" are handled at any step.
+- A pack FAQ is answered at any step, then the current question is asked again; it never
+  creates a staff task.
+- Nothing is booked or confirmed except as the answer to a pending question about that exact
+  slot or appointment. Acknowledgements ("ok", "thanks", emoji) never start anything.
+- A time or part of day in the message beats a bare "no" ("no, evening instead").
 - A held slot is released whenever the patient leaves the confirmation step.
 - Booking events are written by the booking engine behind the port; this engine only emits
   conversation events (booking_started, question_unanswered, handoff ...).
@@ -49,9 +54,9 @@ from salesbot_core.flow.ports import (
     SlotUnavailable,
 )
 from salesbot_core.packs import Pack
-from salesbot_core.packs.schema import Intent, Language
+from salesbot_core.packs.schema import FAQ, Intent, Language
 from salesbot_core.scheduling import Scope, Slot
-from salesbot_core.text.formatting import day_label, long_date, time_label
+from salesbot_core.text.formatting import day_label, long_date, time_label, weekly_hours
 from salesbot_core.text.language import (
     Detected,
     detect,
@@ -59,7 +64,7 @@ from salesbot_core.text.language import (
     reply_language,
     requested_language,
 )
-from salesbot_core.text.matching import matches_any, normalize
+from salesbot_core.text.matching import matches_any, normalize, only_phrases
 from salesbot_core.text.when import ClockTime, When, bare_number, parse_when
 
 # Messages the engine sends. A pack used with the engine must define all of them.
@@ -73,14 +78,14 @@ REQUIRED_MESSAGES = frozenset(
         "handed_to_staff", "human_requested", "emergency", "language_switched", "opted_out",
         "opt_book", "opt_reschedule", "opt_cancel", "opt_human", "opt_yes", "opt_no",
         "opt_confirm", "opt_not_now", "opt_more_days", "opt_more_times", "opt_other_day",
-        "opt_cancel_confirm", "opt_keep",
+        "opt_cancel_confirm", "opt_keep", "ack", "second_ask", "opt_book_another",
     }
 )  # fmt: skip
 # Placeholders the engine fills. Pack messages may use only these.
 PLACEHOLDERS = frozenset(
     {
         "business_name", "client_name", "doctor", "date", "time", "days", "clinic_phone",
-        "emergency_numbers",
+        "emergency_numbers", "hours",
     }
 )  # fmt: skip
 # Every emergency reply must carry these, in every language.
@@ -103,6 +108,8 @@ class FlowContext:
     values: dict[str, str] = field(default_factory=dict)
     # Staff took over this client: the engine stays silent.
     automation_paused: bool = False
+    # Local demo only (docs/DEMO.md): answer the pack's FAQs marked `demo` (fictional text).
+    demo: bool = False
 
 
 def placeholders(text: str) -> set[str]:
@@ -133,6 +140,7 @@ class FlowEngine:
         self.port = port
         self.ctx = ctx
         self.tz = ZoneInfo(port.settings.timezone)
+        self.faqs: list[FAQ] = [f for f in pack.faqs if f.keywords and (ctx.demo or not f.demo)]
 
     def new_state(self, language: Language) -> ConversationState:
         if language not in self.languages:
@@ -229,6 +237,17 @@ class _Session:
         **values: str,
     ) -> None:
         template, language = self._text(key, in_language)
+        self._add(key, template, language, options, fallback, values)
+
+    def _add(
+        self,
+        key: str,
+        template: str,
+        language: Language,
+        options: list[Option] | None,
+        fallback: str | None,
+        values: dict[str, str],
+    ) -> None:
         filled = self._values(values)
         text = template.format_map(filled)
         draft = self.e.pack.is_draft(language, key) or (
@@ -365,14 +384,38 @@ class _Session:
 
     def on_text(self, text: str, intents: set[Intent]) -> None:
         step = self.state.step
-        if step in _YES_NO_STEPS and ("yes" in intents) != ("no" in intents):
-            self.on_yes_no("yes" in intents)
+        when = parse_when(text, self.today, bare_number_is_time=step is Step.PICK_TIME)
+        acting = bool(intents & _ACTIONS) or not when.empty
+
+        faqs = [f for f in self.e.faqs if matches_any(text, f.keywords)]
+        if faqs:
+            for faq in faqs:
+                self.answer_faq(faq, last=not acting and faq is faqs[-1])
+            if not acting:
+                if step is not Step.IDLE:
+                    self.reprompt()
+                return
+
+        yes = bool(intents & {"yes", "confirm"})
+        no = "no" in intents
+        time_beats_no = not when.empty and step in _TIME_BEATS_NO
+        if step in _YES_NO_STEPS and yes != no and (not time_beats_no or self.is_pending(when)):
+            self.on_yes_no(yes)
+            return
+        if when.empty and self.is_acknowledgement(text):
+            # "ok", "thanks", emoji: never a booking, never a confirmation.
+            if step is Step.IDLE:
+                self.say("ack")
+            else:
+                self.reprompt()
+            return
+        if step is Step.CONFIRM_APPOINTMENT and not when.empty:
+            self.start_reschedule(when)
+            return
+        if step is Step.CONFIRM_SECOND and not when.empty and not no:
+            self.start_booking(when, another=True)
             return
 
-        when = parse_when(text, self.today, bare_number_is_time=step is Step.PICK_TIME)
-        if step is Step.IDLE and intents and intents <= {"yes", "no", "thanks"} and when.empty:
-            # "ok", "thank you" after a finished task: nothing to answer.
-            return
         picking = step in (Step.PICK_DAY, Step.PICK_TIME, Step.CONFIRM_SLOT, Step.OFFER_EARLIEST)
         if picking and ("cancel" in intents or "no" in intents) and when.empty:
             self.abandon()
@@ -383,6 +426,9 @@ class _Session:
         elif picking and not when.empty:
             self.drop_hold()
             self.apply_when(when)
+        elif "confirm" in intents:
+            self.reset()
+            self.confirm_appointment()
         elif "more" in intents and step is Step.PICK_DAY:
             self.ask_day(from_day=self.state.days_from)
         elif "more" in intents and step is Step.PICK_TIME:
@@ -395,6 +441,45 @@ class _Session:
             self.menu()
         else:
             self.miss()
+
+    def is_acknowledgement(self, text: str) -> bool:
+        intents = self.e.conversation.intents
+        return only_phrases(text, [*intents.get("yes", []), *intents.get("thanks", [])])
+
+    def is_pending(self, when: When) -> bool:
+        """The message names the very slot being asked about ("yes, 11 am is fine")."""
+        st = self.state
+        starts = st.hold.starts_at if st.hold is not None else st.earliest
+        if starts is None or when.time is None:
+            return False
+        local = starts.astimezone(self.e.tz)
+        if when.day is not None and when.day != local.date():
+            return False
+        return any(
+            c.hour == local.hour and c.minute == local.minute for c in when.time.candidates()
+        )
+
+    # -- FAQs ---------------------------------------------------------------------------
+
+    def answer_faq(self, faq: FAQ, *, last: bool) -> None:
+        wanted = self.state.language
+        language: Language = wanted if wanted in faq.answer else "en"
+        values: dict[str, str] = {}
+        if faq.source == "opening_hours":
+            values["hours"] = "\n".join(
+                f"{self.e.port.practitioner_name(pid, language)}: {weekly_hours(windows, language)}"
+                for pid, windows in self.e.port.weekly_hours()
+                if windows
+            )
+        options: list[Option] = []
+        if faq.offer_human:
+            options.append(self.option("human", "opt_human"))
+        elif last and self.state.step is Step.IDLE:
+            options = self.menu_options()
+        offered = self.state.offered
+        self._add(f"faq:{faq.id}", faq.answer[language], language, options, None, values)
+        if not options:
+            self.state.offered = offered
 
     def on_yes_no(self, yes: bool) -> None:
         step = self.state.step
@@ -419,8 +504,13 @@ class _Session:
             if yes:
                 self.cancel_appointment()
             else:
-                self.reset()
-                self.say("cancel_kept")
+                self.keep_appointment(self.state.appointment_id)
+        elif step is Step.CONFIRM_SECOND:
+            if yes:
+                self.start_booking(another=True)
+            else:
+                upcoming = self.e.port.upcoming(now=self.now)
+                self.keep_appointment(upcoming.id if upcoming else None)
         elif step is Step.CONFIRM_APPOINTMENT:
             if yes:
                 self.confirm_appointment()
@@ -520,6 +610,8 @@ class _Session:
             )
         elif st.step is Step.OFFER_EARLIEST:
             self.ask_day()
+        elif st.step is Step.CONFIRM_SECOND:
+            self.ask_second()
         else:
             self.menu()
 
@@ -545,11 +637,40 @@ class _Session:
                 return Scope(visit=appt.visit, practitioner_id=appt.practitioner_id)
         return Scope(visit=self.e.port.visit_type())
 
-    def start_booking(self, when: When | None = None) -> None:
+    def start_booking(self, when: When | None = None, *, another: bool = False) -> None:
         self.reset()
+        if not another and self.ask_second():
+            return
         self.state.purpose = Purpose.BOOK
         self.event(EventType.BOOKING_STARTED, purpose="book")
         self.begin(when)
+
+    def ask_second(self) -> bool:
+        """The patient already has an upcoming appointment: ask before booking another."""
+        appt = self.e.port.upcoming(now=self.now)
+        if appt is None:
+            return False
+        self.state.step = Step.CONFIRM_SECOND
+        self.state.appointment_id = appt.id
+        self.say(
+            "second_ask",
+            [
+                self.option("yes", "opt_book_another"),
+                self.option("reschedule", "opt_reschedule"),
+                self.option("keep", "opt_keep"),
+            ],
+            **self.slot_values(appt.practitioner_id, appt.starts_at),
+        )
+        return True
+
+    def keep_appointment(self, appointment_id: UUID | None) -> None:
+        """Nothing changes; say so with the appointment's day and time."""
+        self.reset()
+        appt = self.e.port.get(appointment_id) if appointment_id else None
+        if appt is None:
+            self.menu()
+            return
+        self.say("cancel_kept", **self.slot_values(appt.practitioner_id, appt.starts_at))
 
     def begin(self, when: When | None) -> None:
         """Common start of booking and rescheduling: check there is anything to offer."""
@@ -586,11 +707,21 @@ class _Session:
                 self.choose_day(when.day, when.time, when.part)
         elif when.time is not None and self.state.day is not None:
             self.choose_day(self.state.day, when.time, when.part)
+        elif when.part is not None and self.state.day is not None and self._has_part(when.part):
+            # "no, evening instead": the same day, if it has that part of the day free.
+            self.choose_day(self.state.day, None, when.part)
         elif when.time is not None or when.part is not None:
             # A time without a day: the first day that has it.
             self.time_on_first_day(when)
         else:
             self.ask_day(from_day=when.from_day)
+
+    def _has_part(self, part: str) -> bool:
+        day = self.state.day
+        if day is None or day < self.today:
+            return False
+        slots = self.e.port.open_slots(self.scope(), day=day, now=self.now)
+        return _in_part(slots, part, self.e.tz)
 
     def time_on_first_day(self, when: When) -> None:
         for day in self.e.port.open_days(self.scope(), now=self.now):
@@ -770,9 +901,11 @@ class _Session:
             self.say("booked", **values)
 
     def abandon(self) -> None:
-        purpose = self.state.purpose
+        if self.state.purpose is Purpose.RESCHEDULE:
+            self.keep_appointment(self.state.appointment_id)
+            return
         self.reset()
-        self.say("cancel_kept" if purpose is Purpose.RESCHEDULE else "abandon_booking")
+        self.say("abandon_booking")
 
     # -- existing appointments ----------------------------------------------------------
 
@@ -817,11 +950,15 @@ class _Session:
         try:
             if appointment_id is None:
                 raise NotActive("nothing to cancel")
-            self.e.port.cancel(appointment_id, now=self.now)
+            appt = self.e.port.cancel(appointment_id, now=self.now)
         except NotActive:
             self.say("cancel_none", [self.option("book", "opt_book")])
             return
-        self.say("cancelled", [self.option("book", "opt_book")])
+        self.say(
+            "cancelled",
+            [self.option("book", "opt_book")],
+            **self.slot_values(appt.practitioner_id, appt.starts_at),
+        )
 
     def ask_confirm_appointment(self, appointment_id: UUID, key: str) -> None:
         appt = self.e.port.get(appointment_id)
@@ -857,8 +994,21 @@ _YES_NO_STEPS = frozenset(
         Step.OFFER_EARLIEST,
         Step.CONFIRM_CANCEL,
         Step.CONFIRM_APPOINTMENT,
+        Step.CONFIRM_SECOND,
     }
 )
+# Yes/no questions where a day or time in the answer means "this instead".
+_TIME_BEATS_NO = frozenset(
+    {
+        Step.WELCOME,
+        Step.CONFIRM_SLOT,
+        Step.OFFER_EARLIEST,
+        Step.CONFIRM_APPOINTMENT,
+        Step.CONFIRM_SECOND,
+    }
+)
+# Intents that ask for something to be done (an FAQ alongside them is answered first).
+_ACTIONS: frozenset[Intent] = frozenset({"book", "reschedule", "cancel", "confirm", "human"})
 
 
 def _part_of(moment: datetime, tz: ZoneInfo) -> str:

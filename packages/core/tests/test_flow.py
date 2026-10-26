@@ -358,10 +358,10 @@ def test_a_good_message_resets_misses(make_chat):
     assert chat.state.misses == 0
 
 
-def test_thanks_after_a_task_is_silent(make_chat):
+def test_thanks_after_a_task_gets_a_short_reply(make_chat):
     chat = make_chat()
     book_tomorrow_11(chat)
-    assert chat.send("thank you").replies == []
+    assert keys(chat.send("thank you")) == ["ack"]
 
 
 def test_paused_automation_stays_silent(make_chat):

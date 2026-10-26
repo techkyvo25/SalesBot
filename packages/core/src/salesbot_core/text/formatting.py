@@ -7,9 +7,11 @@ WhatsApp users type and read. Hindi and Marathi names are DRAFT with the rest of
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from collections.abc import Sequence
+from datetime import date, datetime, time
 
 from salesbot_core.packs.schema import Language
+from salesbot_core.scheduling import WeeklyWindow
 
 _WEEKDAYS: dict[Language, tuple[str, ...]] = {
     "en": ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"),
@@ -81,3 +83,44 @@ def time_label(moment: datetime, language: Language) -> str:
     if language == "en":
         return f"{clock} {'am' if moment.hour < 12 else 'pm'}"
     return f"{_PARTS[language][_part_index(moment.hour)]} {clock}"
+
+
+def _day_list(weekdays: list[int], language: Language) -> str:
+    """ISO weekdays as "Mon–Fri" for runs of three or more, else "Mon, Wed"."""
+    names = _WEEKDAYS_SHORT[language]
+    runs: list[list[int]] = []
+    for day in sorted(weekdays):
+        if runs and runs[-1][-1] == day - 1:
+            runs[-1].append(day)
+        else:
+            runs.append([day])
+    parts = []
+    for run in runs:
+        if len(run) >= 3:
+            parts.append(f"{names[run[0] - 1]}–{names[run[-1] - 1]}")
+        else:
+            parts.extend(names[d - 1] for d in run)
+    return ", ".join(parts)
+
+
+def _clock(t: time, language: Language) -> str:
+    return time_label(datetime.combine(date(2000, 1, 3), t), language)
+
+
+def weekly_hours(windows: Sequence[WeeklyWindow], language: Language) -> str:
+    """One person's working hours: "Mon–Fri 10:00 am–1:00 pm, 5:00 pm–8:00 pm; Sat ...".
+    Days with the same hours are grouped. Breaks are not shown."""
+    by_day: dict[int, tuple[tuple[time, time], ...]] = {}
+    for day in range(1, 8):
+        spans = sorted((w.start, w.end) for w in windows if w.weekday == day)
+        if spans:
+            by_day[day] = tuple(spans)
+    groups: dict[tuple[tuple[time, time], ...], list[int]] = {}
+    for day, spans in by_day.items():
+        groups.setdefault(spans, []).append(day)
+    return "; ".join(
+        _day_list(days, language)
+        + " "
+        + ", ".join(f"{_clock(a, language)}–{_clock(b, language)}" for a, b in spans)
+        for spans, days in sorted(groups.items(), key=lambda g: g[1][0])
+    )

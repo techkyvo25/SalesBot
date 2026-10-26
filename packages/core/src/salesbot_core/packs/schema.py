@@ -59,9 +59,22 @@ class Service(_Strict):
 
 
 class FAQ(_Strict):
+    """A common question the conversation answers, then it asks its current question again.
+
+    `answer` may use the engine's placeholders; with `source: opening_hours` it gets {hours},
+    rendered from the doctors' working hours in the database. `demo: true` marks fictional
+    text for the local demo (docs/DEMO.md): the engine uses it only when FlowContext.demo is on.
+    """
+
+    id: str = Field(default="", pattern=r"^([a-z][a-z0-9_]*)?$")
     question: LocalizedText
     answer: LocalizedText
+    # Phrases in any supported language (inputs, never shown). Same matching as intents.
     keywords: list[str] = Field(default_factory=list)
+    source: Literal["text", "opening_hours"] = "text"
+    # Offer "Talk to clinic" with the answer.
+    offer_human: bool = False
+    demo: bool = False
 
 
 class EmergencyConfig(_Strict):
@@ -72,7 +85,17 @@ class EmergencyConfig(_Strict):
 
 
 Intent = Literal[
-    "book", "reschedule", "cancel", "yes", "no", "human", "menu", "more", "stop", "thanks"
+    "book",
+    "reschedule",
+    "cancel",
+    "confirm",
+    "yes",
+    "no",
+    "human",
+    "menu",
+    "more",
+    "stop",
+    "thanks",
 ]
 
 
@@ -155,6 +178,7 @@ class Pack(_Strict):
     def _unique_ids(self) -> Pack:
         for label, items in (
             ("intake question key", [q.key for q in self.intake_questions]),
+            ("faq id", [f.id for f in self.faqs if f.id]),
             ("service id", [s.id for s in self.services]),
             ("lead stage", self.lead_stages),
         ):
@@ -163,6 +187,8 @@ class Pack(_Strict):
                 raise ValueError(f"duplicate {label}: {sorted(dupes)}")
         known = set(self.conversation.messages) if self.conversation else set()
         known |= {f"voice.{k}" for k in self.voice.messages} if self.voice else set()
+        if self.conversation is not None and any(not f.id for f in self.faqs):
+            raise ValueError("faqs need an id when the pack has a conversation section")
         unknown = set(self.draft_messages) - known
         if unknown:
             raise ValueError(f"draft_messages names unknown messages: {sorted(unknown)}")

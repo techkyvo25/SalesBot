@@ -58,3 +58,20 @@ def contains_phrase(message_tokens: list[str], phrase: str) -> bool:
 def matches_any(text: str, phrases: Iterable[str]) -> bool:
     toks = tokens(text)
     return any(contains_phrase(toks, p) for p in phrases)
+
+
+def only_phrases(text: str, phrases: Iterable[str]) -> bool:
+    """True when every word of the message is part of one of the phrases. Tokens without a
+    letter or digit (emoji, symbols) count as covered. False for a message with no tokens."""
+    toks = tokens(text)
+    if not toks:
+        return False
+    covered = {i for i, t in enumerate(toks) if not any(ch.isalnum() for ch in t)}
+    for phrase in phrases:
+        wanted = phrase_tokens(phrase)
+        n = len(wanted)
+        for i in range(len(toks) - n + 1) if n else ():
+            window = toks[i : i + n]
+            if all(_token_matches(w, t) for w, t in zip(wanted, window, strict=True)):
+                covered.update(range(i, i + n))
+    return len(covered) == len(toks)

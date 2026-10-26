@@ -17,7 +17,14 @@ from pydantic import BaseModel
 
 from salesbot_core.flow.models import Hold
 from salesbot_core.packs.schema import Language
-from salesbot_core.scheduling import AppointmentStatus, SchedulingSettings, Scope, Slot, VisitType
+from salesbot_core.scheduling import (
+    AppointmentStatus,
+    SchedulingSettings,
+    Scope,
+    Slot,
+    VisitType,
+    WeeklyWindow,
+)
 
 
 class SchedulingError(Exception):
@@ -85,3 +92,7 @@ class SchedulingPort(Protocol):
     def cancel(self, appointment_id: UUID, *, now: datetime) -> Appointment: ...
 
     def practitioner_name(self, practitioner_id: UUID, language: Language) -> str: ...
+
+    def weekly_hours(self) -> list[tuple[UUID, list[WeeklyWindow]]]:
+        """Each active practitioner's weekly working hours, in a stable order."""
+        ...

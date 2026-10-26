@@ -263,7 +263,8 @@ Reply in the caller's language: English, Hindi or Marathi, only if the clinic of
 ### Knowledge base text
 
 ```text
-(no FAQs in this pack)
+Q: Is the doctor good?
+A: The clinic team can answer questions about our doctors. Choose Talk to clinic and they will contact you.
 ```
 
 ### API tools (cURL to import)

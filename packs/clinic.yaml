@@ -129,6 +129,68 @@ emergency:
 
 lead_stages: [new, contacted, booked, confirmed, showed, no_show, lost]
 
+# Answered at any step of the conversation, then the current question is asked again.
+# `demo: true` = DEMO text for the local demo only (docs/DEMO.md): fictional, used only when
+# the engine runs with FlowContext.demo. A real clinic's address, parking, fee and insurance
+# answers belong in its own settings, not in this pack. Opening hours come from the doctors'
+# hours in the database. The doctor question gets a neutral line: no claims about quality.
+faqs:
+  - id: hours
+    source: opening_hours
+    keywords: ["opening hours", "open hours", "hours", timing, timings, "what time do you open",
+               "when are you open", "when do you open", "when do you close", "closing time",
+               "kab khul*", "kab tak khula", "खुलता", "खुला", "khulta", "वेळा"]
+    question: { en: "What are your opening hours?" }
+    answer:
+      en: "Opening hours:\n{hours}"
+      hi: "खुलने का समय:\n{hours}"
+      mr: "उघडण्याच्या वेळा:\n{hours}"
+  - id: address
+    demo: true
+    keywords: [address, location, located, directions, "where is", "where are you",
+               "how do i get", "how to reach", "kahan hai", "कहाँ है", "कहां है", "पत्ता",
+               "kuthe ahe", "कुठे आहे"]
+    question: { en: "Where is the clinic?" }
+    answer:
+      en: "Address: Demo Clinic, 12 Example Road, Pune (fictional)."
+      hi: "पता: डेमो क्लिनिक, 12 एग्ज़ाम्पल रोड, पुणे (काल्पनिक)।"
+      mr: "पत्ता: डेमो क्लिनिक, 12 एक्झाम्पल रोड, पुणे (काल्पनिक)."
+  - id: parking
+    demo: true
+    keywords: [parking, park, "पार्किंग"]
+    question: { en: "Is there parking?" }
+    answer:
+      en: "Free patient parking is available in the building basement (demo text)."
+      hi: "मरीज़ों के लिए बिल्डिंग के बेसमेंट में मुफ़्त पार्किंग है (डेमो टेक्स्ट)।"
+      mr: "रुग्णांसाठी इमारतीच्या तळघरात मोफत पार्किंग आहे (डेमो मजकूर)."
+  - id: fee
+    demo: true
+    keywords: [fee, fees, cost, costs, charge, charges, price, "how much", "kitne paise",
+               "kitni fees", "fees kitni", "फीस", "शुल्क", "कितने पैसे", "किती पैसे"]
+    question: { en: "How much is a consultation?" }
+    answer:
+      en: "The consultation fee is Rs 500 (demo text)."
+      hi: "कंसल्टेशन फीस 500 रुपये है (डेमो टेक्स्ट)।"
+      mr: "कन्सल्टेशन फी 500 रुपये आहे (डेमो मजकूर)."
+  - id: insurance
+    demo: true
+    keywords: [insurance, insured, cashless, mediclaim, "bima", "बीमा", "इंश्योरेंस", "विमा"]
+    question: { en: "Do you take insurance?" }
+    answer:
+      en: "Please bring your policy card and the clinic team will confirm cover (demo text)."
+      hi: "कृपया अपना पॉलिसी कार्ड साथ लाएँ, क्लिनिक की टीम कवर की पुष्टि करेगी (डेमो टेक्स्ट)।"
+      mr: "कृपया तुमचं पॉलिसी कार्ड सोबत आणा, क्लिनिकची टीम कव्हरची खात्री करेल (डेमो मजकूर)."
+  - id: doctor_quality
+    offer_human: true
+    keywords: ["doctor good", "doctors good", "good doctor", "doctor any good", "best doctor",
+               "doctor experienced", "experienced", "qualified", "reviews", "rating",
+               "doctor accha", "doctor achha", "acche doctor", "अच्छे डॉक्टर", "डॉक्टर अच्छे"]
+    question: { en: "Is the doctor good?" }
+    answer:
+      en: "The clinic team can answer questions about our doctors. Choose Talk to clinic and they will contact you."
+      hi: "डॉक्टरों के बारे में सवालों के जवाब क्लिनिक की टीम दे सकती है। 'क्लिनिक से बात करें' चुनें, टीम आपसे संपर्क करेगी।"
+      mr: "डॉक्टरांबद्दलच्या प्रश्नांची उत्तरं क्लिनिकची टीम देऊ शकते. 'क्लिनिकशी बोला' निवडा, टीम तुमच्याशी संपर्क करेल."
+
 conversation:
   # Live channels send this while the emergency message is DRAFT (clinical review pending).
   # Numbers and symbols only, so it needs no review and reads the same in every language.
@@ -177,9 +239,12 @@ conversation:
                  "badal*", "बदल*", "pudhe", "पुढे ढकल*"]
     cancel: ["cancel*", cancle, "radd*", "रद्द", "कैंसल", "कॅन्सल", "nahi aana", "नहीं आना",
              "नाही येणार", "nahi yenar"]
-    "yes": ["yes", yeah, yep, ya, yup, "ok", okay, sure, "confirm*", done, haan, han, haa,
+    # "confirm" outside a pending question confirms the upcoming appointment; inside a
+    # yes/no question it counts as yes.
+    confirm: ["confirm*", "conform*", "कन्फ*", "पक्का", pakka]
+    "yes": ["yes", yeah, yep, ya, yup, "ok", okay, okk, "k", sure, done, haan, han, haa,
             "हाँ", "हां", ji, "जी", theek, thik, "ठीक", "kar do", "कर दो", "ho", hoy, "होय",
-            "हो", chalel, "चालेल", kara, "करा", barobar, "बरोबर", "कन्फ*"]
+            "हो", chalel, "चालेल", kara, "करा", barobar, "बरोबर"]
     "no": ["no", nope, nah, "not now", nahi, nahin, "नहीं", "नही", mat, "मत", nako, "नको",
            "नाही", "rehne do", "रहने दो", "rahu dya", "राहू द्या", keep]
     human: [human, person, "real person", staff, receptionist, "talk to", "speak to",
@@ -276,13 +341,21 @@ conversation:
       hi: "क्या {doctor} के साथ {date}, {time} का अपॉइंटमेंट रद्द करना है?"
       mr: "{doctor} यांच्याकडची {date}, {time} ची अपॉइंटमेंट रद्द करायची आहे का?"
     cancelled:
-      en: "Your appointment is cancelled. Message us any time to book again."
-      hi: "आपका अपॉइंटमेंट रद्द कर दिया गया है। दोबारा बुक करने के लिए कभी भी मैसेज करें।"
-      mr: "तुमची अपॉइंटमेंट रद्द केली आहे. पुन्हा बुक करण्यासाठी कधीही मेसेज करा."
+      en: "Your appointment with {doctor} on {date} at {time} is cancelled. Message us any time to book again."
+      hi: "{doctor} के साथ {date}, {time} का आपका अपॉइंटमेंट रद्द कर दिया गया है। दोबारा बुक करने के लिए कभी भी मैसेज करें।"
+      mr: "{doctor} यांच्याकडची {date}, {time} ची तुमची अपॉइंटमेंट रद्द केली आहे. पुन्हा बुक करण्यासाठी कधीही मेसेज करा."
     cancel_kept:
-      en: "Okay, your appointment stays as it is."
-      hi: "ठीक है, आपका अपॉइंटमेंट पहले जैसा ही रहेगा।"
-      mr: "ठीक आहे, तुमची अपॉइंटमेंट आहे तशीच राहील."
+      en: "Okay, your appointment stays as it is: {doctor}, {date} at {time}."
+      hi: "ठीक है, आपका अपॉइंटमेंट पहले जैसा ही रहेगा: {doctor}, {date}, {time}।"
+      mr: "ठीक आहे, तुमची अपॉइंटमेंट आहे तशीच राहील: {doctor}, {date}, {time}."
+    second_ask:
+      en: "You already have an appointment: {doctor}, {date} at {time}. Do you want to book another one as well?"
+      hi: "आपका एक अपॉइंटमेंट पहले से है: {doctor}, {date}, {time}। क्या आप एक और अपॉइंटमेंट भी बुक करना चाहेंगे?"
+      mr: "तुमची एक अपॉइंटमेंट आधीच आहे: {doctor}, {date}, {time}. आणखी एक अपॉइंटमेंट बुक करायची आहे का?"
+    ack:
+      en: "Okay. Message us any time if you need anything."
+      hi: "ठीक है। कुछ भी चाहिए तो कभी भी मैसेज करें।"
+      mr: "ठीक आहे. काहीही लागलं तर कधीही मेसेज करा."
     confirm_request:
       en: "Please confirm your appointment: {doctor}, {date} at {time}."
       hi: "कृपया अपना अपॉइंटमेंट कन्फ़र्म करें: {doctor}, {date}, {time}।"
@@ -338,6 +411,7 @@ conversation:
     opt_other_day: { en: "Another day", hi: "दूसरा दिन", mr: "दुसरा दिवस" }
     opt_cancel_confirm: { en: "Yes, cancel", hi: "हाँ, रद्द करें", mr: "हो, रद्द करा" }
     opt_keep: { en: "Keep it", hi: "रहने दें", mr: "राहू द्या" }
+    opt_book_another: { en: "Book another", hi: "एक और बुक करें", mr: "आणखी एक बुक करा" }
 
 # Voice agent on Sarvam Voice Agents (docs/SARVAM_AGENT.md). The instruction is rendered by
 # `python -m salesbot_core.packs.render_agent --pack clinic`; {placeholders} become Sarvam

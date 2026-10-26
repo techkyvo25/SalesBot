@@ -100,3 +100,25 @@ def test_engine_replies_are_clean(make_chat, language, script):
             texts = [reply.text, *(o.label for o in reply.options)]
             for text in texts:
                 assert forbidden_terms(text) == [], (reply.key, reply.language, text)
+
+
+FAQ_AND_ACK_SCRIPT = [
+    "what are your opening hours",
+    "where is the clinic",
+    "is there parking",
+    "how much is the fee",
+    "do you take insurance",
+    "is the doctor good?",
+    "ok",
+    "👍",
+    "confirm my appointment",
+]
+
+
+@pytest.mark.parametrize("language", ["en", "hi", "mr"])
+def test_faq_and_acknowledgement_replies_are_clean(make_chat, language):
+    chat = make_chat(language, demo=True)
+    for line in FAQ_AND_ACK_SCRIPT:
+        for reply in chat.send(line).replies:
+            for text in [reply.text, *(o.label for o in reply.options)]:
+                assert forbidden_terms(text) == [], (reply.key, reply.language, text)
