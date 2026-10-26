@@ -1,0 +1,32 @@
+# Demo clinic: FAKE data only (docs/DEMO.md). Loaded by `make demo-seed` / `make demo-reset`.
+# Open every day so the demo works on any date; times are local (Asia/Kolkata).
+name: Sunrise Clinic (DEMO)
+slug: anvia-demo-clinic
+pack: clinic
+timezone: Asia/Kolkata
+default_language: en
+allowed_languages: [en, hi]
+# Fake number: never dialled.
+contact_phone: "+910000000000"
+
+settings:
+  practitioner_selection: any_available
+  reschedule_approval: auto
+
+practitioners:
+  - name: Dr. Priya Kulkarni (demo)
+    display_names: {hi: डॉ. प्रिया कुलकर्णी (डेमो)}
+    consultation_minutes: 15
+    first_visit_minutes: 30
+    hours: &every_day
+      mon: ["09:00-13:00", "16:00-21:00"]
+      tue: ["09:00-13:00", "16:00-21:00"]
+      wed: ["09:00-13:00", "16:00-21:00"]
+      thu: ["09:00-13:00", "16:00-21:00"]
+      fri: ["09:00-13:00", "16:00-21:00"]
+      sat: ["09:00-13:00", "16:00-21:00"]
+      sun: ["09:00-13:00", "16:00-21:00"]
+  - name: Dr. Arjun Rao (demo)
+    display_names: {hi: डॉ. अर्जुन राव (डेमो)}
+    consultation_minutes: 20
+    hours: *every_day

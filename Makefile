@@ -3,7 +3,7 @@
 
 ADMIN := apps/admin
 
-.PHONY: help setup dev-api dev-admin require-docker db-up db-down db-reset migrate test lint format load-clinic simulate-intake console voice-agent voice-ops
+.PHONY: help setup dev-api dev-admin require-docker db-up db-down db-reset migrate test lint format load-clinic simulate-intake console demo demo-seed demo-reset voice-agent voice-ops
 
 help:
 	@echo "setup      install Python (uv) + admin (npm) deps and git hooks"
@@ -19,6 +19,9 @@ help:
 	@echo "load-clinic FILE=x.yaml        load a clinic setup into SUPABASE_DB_URL (dev)"
 	@echo "simulate-intake ARGS='...'     send a signed fake registration (dev, see INTAKE_CONTRACT)"
 	@echo "console ARGS='--lang mr'       chat with the appointment flow in the terminal (no DB)"
+	@echo "console ARGS='--db'            the same chat against SUPABASE_DB_URL's demo clinic"
+	@echo "demo                           the local demo page on http://127.0.0.1:8000/demo (docs/DEMO.md)"
+	@echo "demo-seed / demo-reset         seed / rebuild the FAKE demo clinic only"
 	@echo "voice-agent PACK=clinic        print the Sarvam agent setup rendered from a pack"
 	@echo "voice-ops ARGS='spend'         spend caps, test-run guard, outbound dry run, cost actuals"
 
@@ -71,6 +74,17 @@ simulate-intake:
 
 console:
 	uv run --package salesbot-api python -m salesbot_api.tools.console $(ARGS)
+
+# The demo targets set DEMO_MODE=true for their own process only; .env keeps it off.
+demo-seed:
+	DEMO_MODE=true uv run --package salesbot-api python -m salesbot_api.demo.seed seed
+
+demo-reset:
+	DEMO_MODE=true uv run --package salesbot-api python -m salesbot_api.demo.seed reset
+
+demo: demo-seed
+	@echo "Demo page: http://127.0.0.1:8000/demo  (localhost only; Ctrl+C to stop)"
+	DEMO_MODE=true uv run --package salesbot-api uvicorn salesbot_api.main:app --host 127.0.0.1 --port 8000
 
 voice-agent:
 	uv run python -m salesbot_core.packs.render_agent --pack $(or $(PACK),clinic)
