@@ -12,6 +12,7 @@ from salesbot_api import api_v1, db
 from salesbot_api.auth import AuthUser, current_user
 from salesbot_api.demo import routes as demo_routes
 from salesbot_api.settings import Settings, get_settings
+from salesbot_api.voice import calllog as voice_calllog
 from salesbot_api.voice import tools as voice_tools
 from salesbot_api.voice import webhooks as voice_webhooks
 from salesbot_core.packs import load_all_packs
@@ -22,6 +23,9 @@ app.include_router(voice_tools.router)
 app.include_router(voice_webhooks.router)
 # Local demo page (docs/DEMO.md): only with DEMO_MODE=true and APP_ENV=local.
 demo_routes.mount(app, get_settings())
+# Voice request log for the first voice tests (salesbot_api.voice.calllog): off unless set.
+if get_settings().voice_call_log:
+    voice_calllog.install(app, get_settings().voice_call_log)
 
 
 @app.exception_handler(RequestValidationError)

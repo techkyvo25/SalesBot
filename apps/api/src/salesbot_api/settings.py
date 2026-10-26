@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     voice_webhook_secret: SecretStr | None = None
     # Optional comma-separated source IPs allowed to call the voice endpoints. Empty = any.
     voice_ip_allowlist: str | None = None
+    # File for one line per voice request (name, status, duration; no bodies). Set by
+    # `make voice-tunnel`; read with `make voice-tools-log`. Empty = off.
+    voice_call_log: str | None = None
     sarvam_voice_api_key: SecretStr | None = None
     sarvam_org_id: str | None = None
     sarvam_workspace_id: str | None = None
