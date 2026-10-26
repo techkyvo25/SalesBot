@@ -3,8 +3,11 @@ that no voice line speaks as part of the clinic team."""
 
 import re
 
+import pytest
+
 from salesbot_core.packs import load_pack_by_id
 from salesbot_core.packs.render_agent import ClinicValues, render
+from salesbot_core.text.matching import normalize, tokens
 from salesbot_core.text.wording import forbidden_terms_except
 
 PACK = load_pack_by_id("clinic")
@@ -71,3 +74,39 @@ def test_clinic_values_from_a_clinic_file(tmp_path):
         "clinic_phone": "+910000000001",
         "emergency_numbers": "112 / 108",
     }
+
+
+# -- the speaker is not part of the clinic team -----------------------------------------------
+
+TEAM_WORDS_EN = re.compile(r"\b(we|our team)\b", re.IGNORECASE)
+TEAM_WORDS_DEVANAGARI = {normalize(w) for w in ("हम", "आम्ही", "हमारी", "आमची")}
+
+
+def team_words(text: str) -> list[str]:
+    found = TEAM_WORDS_EN.findall(text)
+    return found + [t for t in tokens(text) if t in TEAM_WORDS_DEVANAGARI]
+
+
+def voice_lines():
+    """Every patient-facing voice line, except the sincere-ask answers (allowlisted)."""
+    for lang, text in PACK.greeting.items():
+        yield f"greeting.{lang}", text
+    for key, localized in PACK.voice.messages.items():
+        for lang, text in localized.items():
+            yield f"voice.messages.{key}.{lang}", text
+    for rendered, mode in ((GENERATED, "generated"), (LITERAL, "literal")):
+        yield f"knowledge_base.{mode}", rendered.knowledge_base
+        for lang, text in rendered.greetings.items():
+            yield f"greeting.{mode}.{lang}", text
+
+
+def test_no_voice_line_speaks_as_the_clinic_team():
+    hits = [(where, team_words(text)) for where, text in voice_lines() if team_words(text)]
+    assert hits == []
+
+
+@pytest.mark.parametrize(
+    "text", ["How can we help you?", "Our team will call", "हम आपकी मदद करेंगे", "आम्ही मदत करू"]
+)
+def test_team_scan_catches_team_wording(text):
+    assert team_words(text)

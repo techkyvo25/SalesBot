@@ -17,9 +17,9 @@ draft_messages: [emergency, voice.task_created_urgent]
 
 # Voice greeting (inbound calls).
 greeting:
-  en: "Hello, thank you for calling {business_name}. How can we help you today?"
-  hi: "नमस्ते, {business_name} में कॉल करने के लिए धन्यवाद। हम आपकी क्या मदद कर सकते हैं?"
-  mr: "नमस्कार, {business_name} मध्ये फोन केल्याबद्दल धन्यवाद. आम्ही तुमची काय मदत करू शकतो?"
+  en: "Hello, thank you for calling {business_name}. How can I help you today?"
+  hi: "नमस्ते, {business_name} में कॉल करने के लिए धन्यवाद। मैं आपकी कैसे मदद करूँ?"
+  mr: "नमस्कार, {business_name} मध्ये फोन केल्याबद्दल धन्यवाद. मी तुमची कशी मदत करू?"
 
 # Patients register through the intake form (docs/INTAKE_CONTRACT.md); calls only ask when.
 intake_questions:
